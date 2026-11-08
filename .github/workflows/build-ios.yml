@@ -21,6 +21,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       IOS_DEPLOYMENT_TARGET: '15.0'
+      CCACHE_BASEDIR: ${{ github.workspace }}
     steps:
       - name: Checkout integration
         uses: actions/checkout@v4
@@ -34,7 +35,9 @@ jobs:
           submodules: recursive
           path: source
       - name: Apply mobile port
-        run: python3 control/integration/apply_port.py source
+        run: |
+          python3 control/integration/apply_port.py source
+          python3 control/integration/fix_build.py source
       - name: Save complete merged source
         working-directory: source
         run: |
@@ -61,6 +64,18 @@ jobs:
         run: |
           brew install cmake ninja ccache
           rustup target add aarch64-apple-ios
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/Library/Caches/ccache
+          key: ely-ios-ccache-v1-${{ github.run_id }}
+          restore-keys: ely-ios-ccache-v1-
+      - name: Check native iOS adapters
+        run: |
+          xcrun --sdk iphoneos clang++ -arch arm64 \
+            -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -miphoneos-version-min=15.0 -std=c++20 -fobjc-arc \
+            -fsyntax-only -Isource/src -Isource/src/engine/external \
+            source/src/ios/ios_music.mm source/src/ios/ios_media.mm
       - name: Configure iPhone arm64 build
         working-directory: source
         run: |
@@ -79,8 +94,9 @@ jobs:
             -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
             -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO \
             -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY= \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+            -DCMAKE_XCODE_ATTRIBUTE_CC="$GITHUB_WORKSPACE/control/integration/ccache-clang.sh" \
+            -DCMAKE_XCODE_ATTRIBUTE_CXX="$GITHUB_WORKSPACE/control/integration/ccache-clangxx.sh" \
+            -DCMAKE_XCODE_ATTRIBUTE_COMPILER_INDEX_STORE_ENABLE=NO
       - name: Compile client
         working-directory: source
         run: cmake --build build-ios --config Release --target game-client --parallel 3
@@ -95,3 +111,8 @@ jobs:
           path: ElyClient-unsigned.ipa
           if-no-files-found: error
           retention-days: 30
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: ~/Library/Caches/ccache
+          key: ely-ios-ccache-v1-${{ github.run_id }}
