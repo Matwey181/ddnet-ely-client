@@ -1,0 +1,34 @@
+name: iOS dependencies
+
+on:
+  push:
+    paths:
+      - '.github/workflows/ios-libraries.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  libraries:
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: BestProjectTeam/BestClient
+          ref: a16988e3b7e99d219ca2741064c3ba5a121fa706
+          submodules: recursive
+      - name: Install tools
+        run: brew install autoconf automake autoconf-archive cmake libtool m4 ninja pkg-config wget
+      - name: Build libraries
+        run: |
+          export M4="$(brew --prefix m4)/bin/m4"
+          export LIBTOOLIZE=glibtoolize
+          scripts/compile_libs/gen_libs.sh build-ios-libs ios
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ddnet-libs-ios
+          path: build-ios-libs/ddnet-libs
+          if-no-files-found: error
+          retention-days: 30
