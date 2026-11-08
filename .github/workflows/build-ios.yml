@@ -2,7 +2,7 @@ name: Ely iOS IPA
 
 on:
   push:
-    branches: [main]
+    branches: [ios-native-media]
     paths: ['integration/**', '.github/workflows/build-ios.yml']
   workflow_dispatch:
 
@@ -48,12 +48,12 @@ jobs:
           mv .github/workflows/* upstream-ci/
           git add -A
           TREE=$(git write-tree)
-          if git fetch origin source; then
+          if git fetch origin source-ios-native-media; then
             COMMIT=$(git commit-tree "$TREE" -p FETCH_HEAD -m "Merge pinned iOS DDNet port with BestClient")
           else
             COMMIT=$(git commit-tree "$TREE" -m "Merge pinned iOS DDNet port with BestClient")
           fi
-          git push origin "${COMMIT}:refs/heads/source"
+          git push origin "${COMMIT}:refs/heads/source-ios-native-media"
       - name: Verify pinned iOS libraries
         working-directory: source
         run: |
