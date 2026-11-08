@@ -55,11 +55,9 @@ void CMenus::RenderSettingsTouch(CUIRect MainView)
 
 	// ---- one scroll region shared by every section ---------------------------
 	static CScrollRegion s_ScrollRegion;
-	vec2 ScrollOffset(0.0f, 0.0f);
 	CScrollRegionParams ScrollParams;
 	ScrollParams.m_ScrollUnit = 40.0f;
-	s_ScrollRegion.Begin(&MainView, &ScrollOffset, &ScrollParams);
-	MainView.y += ScrollOffset.y;
+	s_ScrollRegion.Begin(&MainView, &ScrollParams);
 
 	RenderTouchOptionsSection(MainView, &s_ScrollRegion);
 

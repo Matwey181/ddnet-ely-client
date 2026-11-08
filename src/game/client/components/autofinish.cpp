@@ -2358,16 +2358,15 @@ void CAutoFinish::RenderPathStrip()
 	}
 
 	// world-space projection matching the game camera
-	float aPoints[4];
 	const CCamera &Cam = GameClient()->m_Camera;
-	Graphics()->MapScreenToWorld(Cam.m_Center.x, Cam.m_Center.y, 100.0f, 100.0f, 100.0f,
-		0, 0, Graphics()->ScreenAspect(), Cam.m_Zoom, aPoints);
-	Graphics()->MapScreen(aPoints[0], aPoints[1], aPoints[2], aPoints[3]);
+	const CScreenRect Screen = Graphics()->MapScreenToWorld(Cam.m_Center.x, Cam.m_Center.y, 100.0f, 100.0f, 100.0f,
+		0, 0, Graphics()->ScreenAspect(), Cam.m_Zoom);
+	Graphics()->MapScreen(Screen);
 
 	// cull segments outside the view: a full-map route is thousands of
 	// points and drawing all of them every frame would lag the renderer
-	const vec2 ViewMin(aPoints[0] - 160.0f, aPoints[1] - 160.0f);
-	const vec2 ViewMax(aPoints[2] + 160.0f, aPoints[3] + 160.0f);
+	const vec2 ViewMin = Screen.m_TopLeft - vec2(160.0f, 160.0f);
+	const vec2 ViewMax = Screen.m_BottomRight + vec2(160.0f, 160.0f);
 	const auto InView = [&](const vec2 &P) {
 		return P.x > ViewMin.x && P.x < ViewMax.x && P.y > ViewMin.y && P.y < ViewMax.y;
 	};
@@ -2538,7 +2537,7 @@ void CAutoFinish::RenderPathStrip()
 
 void CAutoFinish::RenderStatus()
 {
-	Graphics()->MapScreen(0.0f, 0.0f, Graphics()->ScreenWidth(), Graphics()->ScreenHeight());
+	Graphics()->MapScreen(CScreenRect(0.0f, 0.0f, Graphics()->ScreenWidth(), Graphics()->ScreenHeight()));
 
 	char aLabel[160];
 	if(m_StatusMessageTime > 0.0f)

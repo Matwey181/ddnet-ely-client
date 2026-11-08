@@ -2558,7 +2558,7 @@ if(str_comp(row.pName, "Line rendering") == 0 && !LineRenderingChildVisible(row.
         // at the same physical size on every resolution.
         const float screenW = VScreenWidth();
         const float screenH = VScreenHeight();
-        Graphics()->MapScreen(0.0f, 0.0f, screenW, screenH);
+        Graphics()->MapScreen(CScreenRect(0.0f, 0.0f, screenW, screenH));
 
         Graphics()->TextureClear();
 
