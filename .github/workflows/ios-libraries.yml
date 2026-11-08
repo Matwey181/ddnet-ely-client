@@ -25,6 +25,7 @@ jobs:
         run: |
           export M4="$(brew --prefix m4)/bin/m4"
           export LIBTOOLIZE=glibtoolize
+          chmod +x scripts/compile_libs/*.sh
           scripts/compile_libs/gen_libs.sh build-ios-libs ios
       - uses: actions/upload-artifact@v4
         with:
