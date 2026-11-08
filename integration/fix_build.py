@@ -21,3 +21,14 @@ lock = json.loads(p.read_text())
 lock["post_patch_fixes_sha256"] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 p.write_text(json.dumps(lock, indent=2) + "\n")
 print("Applied iOS entry point and client indicator compatibility fixes")
+
+# Native Files/Photos import uses UTTypeImage from this system framework.
+p = root / "CMakeLists.txt"
+s = p.read_text()
+old = "  find_library(MEDIAPLAYER MediaPlayer)"
+assert s.count(old) == 1
+s = s.replace(old, old + "\n  find_library(UNIFORMTYPEIDENTIFIERS UniformTypeIdentifiers)", 1)
+old = "    ${MEDIAPLAYER}\n"
+assert s.count(old) == 1
+s = s.replace(old, old + "    ${UNIFORMTYPEIDENTIFIERS}\n", 1)
+p.write_text(s)
