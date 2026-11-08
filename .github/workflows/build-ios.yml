@@ -1,0 +1,98 @@
+name: Ely iOS IPA
+
+on:
+  push:
+    branches: [main]
+    paths: ['integration/**', '.github/workflows/build-ios.yml']
+  workflow_run:
+    workflows: ['iOS dependencies']
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: ely-ios-client
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: macos-15
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      IOS_DEPLOYMENT_TARGET: '15.0'
+    steps:
+      - name: Checkout integration
+        uses: actions/checkout@v4
+        with:
+          path: control
+      - name: Checkout complete BestClient source
+        uses: actions/checkout@v4
+        with:
+          repository: BestProjectTeam/BestClient
+          ref: a16988e3b7e99d219ca2741064c3ba5a121fa706
+          submodules: recursive
+          path: source
+      - name: Apply mobile port
+        run: python3 control/integration/apply_port.py source
+      - name: Save complete merged source
+        working-directory: source
+        run: |
+          git config user.name 'Ely build'
+          git config user.email 'ely-build@users.noreply.github.com'
+          git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git add -A
+          TREE=$(git write-tree)
+          if git fetch origin source; then
+            COMMIT=$(git commit-tree "$TREE" -p FETCH_HEAD -m "Merge pinned iOS DDNet port with BestClient")
+          else
+            COMMIT=$(git commit-tree "$TREE" -m "Merge pinned iOS DDNet port with BestClient")
+          fi
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer ${GH_TOKEN}" push origin "${COMMIT}:refs/heads/source"
+      - name: Download compiled iOS libraries
+        run: |
+          LIBS_RUN=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ios-libraries.yml/runs?status=success&per_page=1" --jq '.workflow_runs[0].id // empty')
+          test -n "$LIBS_RUN" || { echo 'iOS libraries have not completed successfully yet.'; exit 1; }
+          gh run download "$LIBS_RUN" --repo "$GITHUB_REPOSITORY" --name ddnet-libs-ios --dir source/ddnet-libs
+      - name: Install build tools and Rust target
+        run: |
+          brew install cmake ninja ccache
+          rustup target add aarch64-apple-ios
+      - name: Configure iPhone arm64 build
+        working-directory: source
+        run: |
+          cmake -S . -B build-ios -G Xcode \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+            -DCMAKE_RUST_COMPILER_TARGET=aarch64-apple-ios \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCLIENT_EXECUTABLE=ElyClient \
+            -DIOS_BUNDLE_IDENTIFIER=org.ely.client \
+            -DPREFER_BUNDLED_LIBS=ON \
+            -DSERVER=OFF -DTOOLS=OFF -DVULKAN=OFF -DVIDEORECORDER=OFF \
+            -DAUTOUPDATE=OFF -DDISCORD=OFF -DSTEAM=OFF \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY= \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+      - name: Compile client
+        working-directory: source
+        run: cmake --build build-ios --config Release --target game-client --parallel 3
+      - name: Package and verify IPA
+        working-directory: source
+        run: |
+          python3 ../control/integration/package_ipa.py build-ios ../ElyClient-unsigned.ipa
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ElyClient-unsigned-IPA
+          path: ElyClient-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
