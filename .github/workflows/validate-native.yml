@@ -1,0 +1,27 @@
+name: Validate native iOS adapters
+on:
+  push:
+    branches: [ios-native-media]
+permissions:
+  contents: read
+jobs:
+  native-api-check:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: control
+      - uses: actions/checkout@v4
+        with:
+          repository: BestProjectTeam/BestClient
+          ref: a16988e3b7e99d219ca2741064c3ba5a121fa706
+          path: source
+      - run: python3 control/integration/apply_port.py source
+      - name: Check native iOS media and music APIs
+        run: |
+          xcrun --sdk iphoneos clang++ -arch arm64 \
+            -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -miphoneos-version-min=15.0 -std=c++20 -fobjc-arc \
+            -fsyntax-only -Isource/src -Isource/src/engine/external \
+            source/src/ios/ios_music.mm source/src/ios/ios_media.mm
