@@ -1,0 +1,14 @@
+{
+  "bestclient": {
+    "repository": "BestProjectTeam/BestClient",
+    "commit": "a16988e3b7e99d219ca2741064c3ba5a121fa706"
+  },
+  "ios_port": {
+    "repository": "sh1zoooo/ddnet_iOS",
+    "branch": "ddnet-ios",
+    "commit": "a1d0bda1fc940046f410fe6185cc244cafb65f3a"
+  },
+  "patch_sha256": "1b8e9607e623e6c55f2d577c946435407ca8d50f79f03c1eeee7fc96a8fce5a3",
+  "patch_size": 344059,
+  "post_patch_fixes_sha256": "00daed321cc91ad912716650fda7f0da7a398a6323edbb6e18a167dad81cafea"
+}
