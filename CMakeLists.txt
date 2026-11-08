@@ -984,6 +984,7 @@ elseif(TARGET_OS STREQUAL "ios")
   find_library(GAMECONTROLLER GameController)
   find_library(METAL Metal)
   find_library(MEDIAPLAYER MediaPlayer)
+  find_library(UNIFORMTYPEIDENTIFIERS UniformTypeIdentifiers)
   find_library(IMAGEIO ImageIO)
   find_library(COREIMAGE CoreImage)
   find_library(COREMEDIA CoreMedia)
@@ -1014,6 +1015,7 @@ elseif(TARGET_OS STREQUAL "ios")
     ${GAMECONTROLLER}
     ${METAL}
     ${MEDIAPLAYER}
+    ${UNIFORMTYPEIDENTIFIERS}
     ${IMAGEIO}
     ${COREIMAGE}
     ${COREMEDIA}
