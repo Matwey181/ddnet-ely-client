@@ -4,9 +4,6 @@ on:
   push:
     branches: [main]
     paths: ['integration/**', '.github/workflows/build-ios.yml']
-  workflow_run:
-    workflows: ['iOS dependencies']
-    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -19,7 +16,6 @@ concurrency:
 
 jobs:
   build:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: macos-15
     timeout-minutes: 120
     env:
@@ -45,6 +41,8 @@ jobs:
           git config user.name 'Ely build'
           git config user.email 'ely-build@users.noreply.github.com'
           git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          mkdir -p upstream-ci
+          mv .github/workflows/* upstream-ci/
           git add -A
           TREE=$(git write-tree)
           if git fetch origin source; then
@@ -52,12 +50,13 @@ jobs:
           else
             COMMIT=$(git commit-tree "$TREE" -m "Merge pinned iOS DDNet port with BestClient")
           fi
-          git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer ${GH_TOKEN}" push origin "${COMMIT}:refs/heads/source"
-      - name: Download compiled iOS libraries
+          git push origin "${COMMIT}:refs/heads/source"
+      - name: Verify pinned iOS libraries
+        working-directory: source
         run: |
-          LIBS_RUN=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ios-libraries.yml/runs?status=success&per_page=1" --jq '.workflow_runs[0].id // empty')
-          test -n "$LIBS_RUN" || { echo 'iOS libraries have not completed successfully yet.'; exit 1; }
-          gh run download "$LIBS_RUN" --repo "$GITHUB_REPOSITORY" --name ddnet-libs-ios --dir source/ddnet-libs
+          test -d ddnet-libs/sdl/ios/libSDL2.xcframework/ios-arm64
+          test -d ddnet-libs/opus/ios/libopus.xcframework/ios-arm64
+          test -d ddnet-libs/curl/ios/libcurl.xcframework/ios-arm64
       - name: Install build tools and Rust target
         run: |
           brew install cmake ninja ccache
