@@ -3,6 +3,12 @@
 
 #include "gameclient.h"
 #include "mobile_runtime.h"
+#if defined(CONF_PLATFORM_IOS)
+#include <ios/ios_performance.h>
+static constexpr bool ProfileIos = true;
+#else
+static constexpr bool ProfileIos = false;
+#endif
 
 #include "components/background.h"
 #include "components/bestclient/inputs.h" // bestclient
@@ -608,8 +614,12 @@ void CGameClient::OnUpdate()
 
 	for(auto &pComponent : m_vpAll)
 	{
-		int64_t TimeStart = g_Config.m_Debug ? time_get_nanoseconds().count() : 0;
+		int64_t TimeStart = (g_Config.m_Debug || ProfileIos) ? time_get_nanoseconds().count() : 0;
 		pComponent->OnUpdate();
+#if defined(CONF_PLATFORM_IOS)
+  const auto ComponentNs = time_get_nanoseconds().count() - TimeStart;
+  if(ComponentNs > 1000000) IosPerfComponent(GetComponentName(pComponent), false, ComponentNs);
+#endif
 		if(g_Config.m_Debug)
 		{
 			int64_t TimeDelta = time_get_nanoseconds().count() - TimeStart;
@@ -982,11 +992,15 @@ void CGameClient::OnRender()
 	// render all systems
 	for(auto &pComponent : m_vpAll)
 	{
-		int64_t TimeStart = g_Config.m_Debug ? time_get_nanoseconds().count() : 0;
+		int64_t TimeStart = (g_Config.m_Debug || ProfileIos) ? time_get_nanoseconds().count() : 0;
 		// bestclient
 		m_AspectRatio.PrepareComponent(pComponent);
 		// bestclient
 		pComponent->OnRender();
+#if defined(CONF_PLATFORM_IOS)
+  const auto ComponentNs = time_get_nanoseconds().count() - TimeStart;
+  if(ComponentNs > 1000000) IosPerfComponent(GetComponentName(pComponent), true, ComponentNs);
+#endif
 		if(g_Config.m_Debug)
 		{
 			int64_t TimeDelta = time_get_nanoseconds().count() - TimeStart;

@@ -76,6 +76,7 @@
 #include <android/android_main.h>
 #elif defined(CONF_PLATFORM_IOS)
 #include <ios/ios_main.h>
+#include <ios/ios_performance.h>
 #endif
 
 #if defined(CONF_PLATFORM_EMSCRIPTEN)
@@ -3451,11 +3452,19 @@ void CClient::Run()
 	bool LastE = false;
 	bool LastG = false;
 
+#if defined(CONF_PLATFORM_IOS)
+ const bool ProfileFrame = true;
+#else
+ const bool ProfileFrame = false;
+#endif
 	int64_t NextUpdateTime = time_get();
 	int64_t NextRenderTime = time_get();
 
 	while(true)
 	{
+#if defined(CONF_PLATFORM_IOS)
+  CIosFramePool FramePool;
+#endif
 		set_new_tick();
 
 		// handle pending connects
@@ -3487,7 +3496,14 @@ void CClient::Run()
 		}
 
 		// update input
-		if(Input()->Update())
+#if defined(CONF_PLATFORM_IOS)
+  const auto EventStart = time_get_nanoseconds().count();
+#endif
+  const bool QuitFromInput = Input()->Update();
+#if defined(CONF_PLATFORM_IOS)
+  IosPerfPhase(3, time_get_nanoseconds().count() - EventStart);
+#endif
+		if(QuitFromInput)
 		{
 			if(State() == IClient::STATE_QUITTING)
 				break;
@@ -3554,8 +3570,11 @@ void CClient::Run()
 				m_ClientPerfFrames = 0;
 			}
 
-			int64_t TimeUp0 = g_Config.m_Debug ? time_get_nanoseconds().count() : 0;
+			int64_t TimeUp0 = (g_Config.m_Debug || ProfileFrame) ? time_get_nanoseconds().count() : 0;
 			Update();
+#if defined(CONF_PLATFORM_IOS)
+   IosPerfPhase(0, time_get_nanoseconds().count() - TimeUp0);
+#endif
 			if(g_Config.m_Debug)
 			{
 				int64_t TimeUp1 = time_get_nanoseconds().count();
@@ -3623,10 +3642,15 @@ void CClient::Run()
 					NextRenderTime = std::max(NextRenderTime + time_freq() / GfxRefreshRate, Now);
 				m_LastRenderTime = Now;
 
-				int64_t TimeRender0 = g_Config.m_Debug ? time_get_nanoseconds().count() : 0;
+				int64_t TimeRender0 = (g_Config.m_Debug || ProfileFrame) ? time_get_nanoseconds().count() : 0;
 				Render();
-				int64_t TimeRender1 = g_Config.m_Debug ? time_get_nanoseconds().count() : 0;
+				int64_t TimeRender1 = (g_Config.m_Debug || ProfileFrame) ? time_get_nanoseconds().count() : 0;
 				m_pGraphics->Swap();
+#if defined(CONF_PLATFORM_IOS)
+    IosPerfPhase(1, TimeRender1 - TimeRender0);
+    IosPerfPhase(2, time_get_nanoseconds().count() - TimeRender1);
+    IosPerfFrame(m_RenderFrameTime);
+#endif
 				if(g_Config.m_Debug)
 				{
 					int64_t TimeRender2 = time_get_nanoseconds().count();
@@ -3684,10 +3708,15 @@ void CClient::Run()
 			else
 			{
 				// Packets end the wait early. The wait can overshoot by a fraction of its duration, so approach the deadline in halving steps.
+#if defined(CONF_PLATFORM_IOS)
+    // Sleep until the deadline or a packet; avoid busy-polling the final millisecond on mobile.
+    if(WaitTime > 0ns) net_socket_read_wait(m_aNetClient[CONN_MAIN].m_Socket, WaitTime);
+#else
 				while(WaitTime > 0ns && net_socket_read_wait(m_aNetClient[CONN_MAIN].m_Socket, WaitTime > 1000us ? WaitTime / 2 : 0ns) == 0)
 				{
 					WaitTime = Deadline - time_get_nanoseconds();
 				}
+#endif
 			}
 		}
 

@@ -1,6 +1,7 @@
 #include <base/detect.h>
 #if defined(CONF_PLATFORM_IOS)
 #include <ios/ios_music.h>
+#include <ios/ios_performance.h>
 #endif
 #include <algorithm>
 #include "menus.h"
@@ -69,8 +70,13 @@ void CMenus::RenderTouchOptionsSection(CUIRect &MainView, CScrollRegion *pScroll
 	MainView.HSplitTop(30.0f, &Button, &MainView);
 	pScrollRegion->AddRect(Button);
 	static CButtonContainer s_AppleMusicAccess;
-	if(DoButton_Menu(&s_AppleMusicAccess, Localize("Allow Apple Music access"), 0, &Button))
+	if(DoButton_Menu(&s_AppleMusicAccess, Localize("Music source"), 0, &Button))
 		IosMusicAuthorize();
+ MainView.HSplitTop(8.0f, nullptr, &MainView);
+ MainView.HSplitTop(30.0f, &Button, &MainView);
+ pScrollRegion->AddRect(Button);
+ static CButtonContainer s_PerfShare;
+ if(DoButton_Menu(&s_PerfShare, Localize("Share performance log"), 0, &Button)) IosPerfShare();
 	MainView.HSplitTop(8.0f, nullptr, &MainView);
 #endif
 

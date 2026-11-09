@@ -1309,7 +1309,7 @@ namespace
 			const SIosMusicSnapshot Ios = IosMusicPoll();
 			Out = SNowPlayingSnapshot();
 			Out.m_Valid = Ios.m_Valid;
-			Out.m_ServiceId = "ios.apple-music";
+			Out.m_ServiceId = "ios.now-playing";
 			Out.m_Title = Ios.m_Title;
 			Out.m_Artist = Ios.m_Artist;
 			Out.m_Album = Ios.m_Album;
@@ -2978,7 +2978,13 @@ private:
 			std::vector<EProviderCommand> vCommands;
 			{
 				std::unique_lock<std::mutex> Lock(m_Mutex);
-				m_Cv.wait_for(Lock, std::chrono::milliseconds(125), [&]() {
+				m_Cv.wait_for(Lock, std::chrono::milliseconds(
+#if defined(CONF_PLATFORM_IOS)
+500
+#else
+125
+#endif
+), [&]() {
 					return m_Shutdown || !m_vCommands.empty();
 				});
 				if(m_Shutdown)

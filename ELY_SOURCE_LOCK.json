@@ -12,5 +12,11 @@
   "patch_size": 344059,
   "post_patch_fixes_sha256": "0d2dac34884d04217eeab2f9ef3cd0ad589d7210e4b91a9b80b7391b04cf0385",
   "runtime_fix_sha256": "614b7c6186b76f43995a68bae60c9fc79c70160039927ab5320e75b6a300afb7",
-  "runtime_header_sha256": "8a5bb0ee9a5dcbb26eb9155ea2a3d21361f0770c729f8187ef7cf490d4f77659"
+  "runtime_header_sha256": "8a5bb0ee9a5dcbb26eb9155ea2a3d21361f0770c729f8187ef7cf490d4f77659",
+  "stability_fix_sha256": "bc504a78c22a54a46845ad58b0be00b062b8e88cdb6a481796e84dbaaf2a7490",
+  "stability_overlays": {
+    "ios_performance.h": "871376eeb4fe78a09dc7de6a74b5f72bcd48b950d9598896262052ee17c0b9a1",
+    "ios_performance.mm": "0365ee498d7c60d5f6e723601da34d669ca2f83681b49471769e259dfe163f02",
+    "ios_music.mm": "df760407cee771187f0ebb2a97a4130d23c39b5a6a6915577e47b886ef033b67"
+  }
 }

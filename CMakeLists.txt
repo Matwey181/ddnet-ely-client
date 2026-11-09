@@ -1000,6 +1000,7 @@ elseif(TARGET_OS STREQUAL "ios")
     src/ios/ios_main.mm
     src/ios/ios_file_picker.mm
     src/ios/ios_music.mm
+    src/ios/ios_performance.mm
     src/ios/ios_media.mm
   )
   set(PLATFORM_CLIENT_LIBS
@@ -3562,7 +3563,7 @@ if(CLIENT)
   target_link_libraries(game-client ${LIBS_CLIENT})
 
   if(TARGET_OS STREQUAL "ios")
-    set_source_files_properties(src/ios/ios_media.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+    set_source_files_properties(src/ios/ios_media.mm src/ios/ios_music.mm src/ios/ios_performance.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
     set(IOS_INFO_PLIST "${PROJECT_BINARY_DIR}/ios-Info.plist")
     configure_file("${PROJECT_SOURCE_DIR}/scripts/ios/files/Info.plist.in" "${IOS_INFO_PLIST}")
     target_sources(game-client PRIVATE "${PROJECT_SOURCE_DIR}/scripts/ios/files/Assets.xcassets")

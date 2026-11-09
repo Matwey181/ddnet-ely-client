@@ -43,4 +43,16 @@ void IosDisplayCutoutInsets(SDL_Window *pWindow, int *pLeft, int *pRight);
  */
 const char *InitIos();
 
+// Bound autoreleased Foundation/UIKit temporaries to a single game-loop iteration.
+void *IosFramePoolCreate();
+void IosFramePoolDrain(void *pPool);
+class CIosFramePool
+{
+ void *m_pPool;
+public:
+ CIosFramePool() : m_pPool(IosFramePoolCreate()) {}
+ ~CIosFramePool() { IosFramePoolDrain(m_pPool); }
+ CIosFramePool(const CIosFramePool &) = delete;
+ CIosFramePool &operator=(const CIosFramePool &) = delete;
+};
 #endif // IOS_IOS_MAIN_H

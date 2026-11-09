@@ -10,6 +10,9 @@
 #include <SDL_syswm.h>
 
 #include <cmath>
+#import <Foundation/Foundation.h>
+void *IosFramePoolCreate() { return [[NSAutoreleasePool alloc] init]; }
+void IosFramePoolDrain(void *pPool) { [(NSAutoreleasePool *)pPool drain]; }
 
 extern "C" int SDL_UIKitRunApp(int argc, char **argv, int (*mainFunction)(int, char **));
 extern "C" int SDL_main(int argc, char **argv);
