@@ -3,10 +3,10 @@ import hashlib,json,sys
 root=Path(sys.argv[1])
 p=root/'src/ios/ios_main.mm';s=p.read_text()
 a=s.index('\t// The same inset is reported for both sides');b=s.index('\n}\n\nconst char *InitIos()',a)
-s=s[:a]+'''\t// UIKit supplies orientation-correct safe insets. Reserve both sides so the
-\t// UI never lands under the cutout after rotation, regardless of orientation.
-\t*pLeft = std::ceil(Insets.left * Scale);
-\t*pRight = std::ceil(Insets.right * Scale);
+s=s[:a]+'''\t// Render across the full drawable. Safe-area insets must not shrink the game
+\t// viewport: doing so creates black side bars on notched iPhones.
+\t*pLeft = 0;
+\t*pRight = 0;
 '''+s[b:];p.write_text(s)
 p=root/'src/game/client/components/menus_settings.cpp';s=p.read_text();old='\t\tUi()->ClipEnable(&MainView);\n\t\tRenderSettingsPage(Animated);';assert s.count(old)==1
 s=s.replace(old,'''#if defined(CONF_PLATFORM_IOS)
@@ -20,4 +20,4 @@ s=s.replace(old,'''#if defined(CONF_PLATFORM_IOS)
 #endif
 \t\tRenderSettingsPage(Animated);''',1);p.write_text(s)
 p=root/'ELY_SOURCE_LOCK.json';d=json.loads(p.read_text());d['ios_safe_edges_sha256']=hashlib.sha256(Path(__file__).read_bytes()).hexdigest();p.write_text(json.dumps(d,indent=2)+'\n')
-print('Applied orientation-correct safe edges and settings card clipping padding')
+print('Applied full-width iOS viewport and settings card clipping padding')
