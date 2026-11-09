@@ -152,6 +152,23 @@ SIosMusicSnapshot IosMusicPoll()
 							S.m_Title = Text(pItem.title); S.m_Artist = Text(pItem.artist); S.m_Album = Text(pItem.albumTitle);
 							S.m_DurationMs = Milliseconds(pItem.playbackDuration); S.m_PositionMs = Milliseconds(pPlayer.currentPlaybackTime);
 							S.m_ArtKey = std::to_string(pItem.persistentID);
+                            S.m_ArtKey += S.m_Title + "\n" + S.m_Artist;
+                            bool NeedCover;
+                            {
+                                std::lock_guard<std::mutex> Lock(gs_Mutex);
+                                NeedCover = gs_Snapshot.m_ArtKey != S.m_ArtKey;
+                                if(!NeedCover) S.m_vCover = gs_Snapshot.m_vCover;
+                            }
+                            if(NeedCover)
+                            {
+                                UIImage *pCover = [pItem.artwork imageWithSize:CGSizeMake(256, 256)];
+                                NSData *pBytes = pCover ? UIImagePNGRepresentation(pCover) : nil;
+                                if(pBytes.length > 0 && pBytes.length <= 2 * 1024 * 1024)
+                                {
+                                    const auto *pBegin = static_cast<const unsigned char *>(pBytes.bytes);
+                                    S.m_vCover.assign(pBegin, pBegin + pBytes.length);
+                                }
+                            }
 						}
 					}
 					Store(std::move(S), Generation);

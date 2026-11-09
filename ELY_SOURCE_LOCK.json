@@ -17,6 +17,6 @@
   "stability_overlays": {
     "ios_performance.h": "871376eeb4fe78a09dc7de6a74b5f72bcd48b950d9598896262052ee17c0b9a1",
     "ios_performance.mm": "0365ee498d7c60d5f6e723601da34d669ca2f83681b49471769e259dfe163f02",
-    "ios_music.mm": "df760407cee771187f0ebb2a97a4130d23c39b5a6a6915577e47b886ef033b67"
+    "ios_music.mm": "864ce9d04a81b1205f63dae395a08fee981499c5dbde5432e3bf706b61894573"
   }
 }
