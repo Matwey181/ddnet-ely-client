@@ -43,6 +43,7 @@ jobs:
           python3 control/integration/voice-fix/fix_voice.py source
           python3 control/integration/no-voice/remove_voice.py source
           python3 control/integration/ely-update/apply_update.py source
+          python3 control/integration/edge-fix/fix_edges.py source
       - name: Test touch release and mobile frame profile
         run: |
           clang++ -std=c++20 -Wall -Wextra -Werror -Isource/src \
