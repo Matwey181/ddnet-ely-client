@@ -36,5 +36,5 @@
       "iOS does not provide WASAPI audio loopback for other apps; audio-reactive analysis remains unavailable; local UI Demo is explicitly simulated."
     ]
   },
-  "ios_safe_edges_sha256": "e0af3ef5bb1fd52cc8d084d46dc835d53d67c29bf3097817aae0af0e37f411f4"
+  "ios_safe_edges_sha256": "ddde63e02b210a60d29bac6eb038a87244fe5986c5b5fcf640c82e85d12013c5"
 }

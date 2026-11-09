@@ -38,10 +38,10 @@ void IosDisplayCutoutInsets(SDL_Window *pWindow, int *pLeft, int *pRight)
 	const UIEdgeInsets Insets = pView.safeAreaInsets;
 	const CGFloat Scale = pView.contentScaleFactor;
 
-	// UIKit supplies orientation-correct safe insets. Reserve both sides so the
-	// UI never lands under the cutout after rotation, regardless of orientation.
-	*pLeft = std::ceil(Insets.left * Scale);
-	*pRight = std::ceil(Insets.right * Scale);
+	// Render across the full drawable. Safe-area insets must not shrink the game
+	// viewport: doing so creates black side bars on notched iPhones.
+	*pLeft = 0;
+	*pRight = 0;
 
 }
 
