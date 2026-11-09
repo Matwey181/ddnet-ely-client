@@ -42,6 +42,7 @@ jobs:
           python3 control/integration/stability/fix_stability.py source
           python3 control/integration/voice-fix/fix_voice.py source
           python3 control/integration/no-voice/remove_voice.py source
+          python3 control/integration/ely-update/apply_update.py source
       - name: Test touch release and mobile frame profile
         run: |
           clang++ -std=c++20 -Wall -Wextra -Werror -Isource/src \
@@ -50,6 +51,9 @@ jobs:
           clang++ -std=c++20 -DCONF_PLATFORM_IOS -Wall -Wextra -Werror -Isource/src \
             control/integration/stability/frame_pool_test.cpp -o frame-pool-test
           ./frame-pool-test
+          clang++ -std=c++20 -Wall -Wextra -Werror -Isource/src \
+            control/integration/ely-update/touch_aim_test.cpp -o touch-aim-test
+          ./touch-aim-test
       - name: Save complete merged source
         working-directory: source
         run: |
