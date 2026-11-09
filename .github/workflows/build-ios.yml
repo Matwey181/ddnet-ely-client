@@ -39,11 +39,15 @@ jobs:
           python3 control/integration/apply_port.py source
           python3 control/integration/fix_build.py source
           python3 control/integration/runtime/fix_runtime.py source
+          python3 control/integration/stability/fix_stability.py source
       - name: Test touch release and mobile frame profile
         run: |
           clang++ -std=c++20 -Wall -Wextra -Werror -Isource/src \
             control/integration/runtime/touch_dispatch_test.cpp -o touch-runtime-test
           ./touch-runtime-test
+          clang++ -std=c++20 -DCONF_PLATFORM_IOS -Wall -Wextra -Werror -Isource/src \
+            control/integration/stability/frame_pool_test.cpp -o frame-pool-test
+          ./frame-pool-test
       - name: Save complete merged source
         working-directory: source
         run: |
@@ -81,7 +85,7 @@ jobs:
             -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
             -miphoneos-version-min=15.0 -std=c++20 -fobjc-arc \
             -fsyntax-only -Isource/src -Isource/src/engine/external \
-            source/src/ios/ios_music.mm source/src/ios/ios_media.mm
+            source/src/ios/ios_music.mm source/src/ios/ios_media.mm source/src/ios/ios_performance.mm
       - name: Configure iPhone arm64 build
         working-directory: source
         run: |
