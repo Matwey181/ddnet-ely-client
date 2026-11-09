@@ -18,6 +18,7 @@
 #include <game/client/ui.h>
 #include <game/client/ui_scrollregion.h>
 #include <game/localization.h>
+#include <game/version.h>
 
 #include <algorithm>
 #include <vector>
@@ -84,7 +85,7 @@ static const char *GroupLabel(int Leaf)
 {
 	if(GroupForLeaf(Leaf) == SETTINGS_NAV_GROUP_TCLIENT)
 		return TCLocalize("TClient");
-	return Localize("BestClient");
+	return GroupForLeaf(Leaf) == SETTINGS_NAV_GROUP_BESTCLIENT ? CLIENT_NAME : "DDNet";
 }
 
 static void FormatPath(const SEntry &Entry, char *pBuf, size_t BufSize)
@@ -303,6 +304,28 @@ void RenderCornerButton(CMenus *pMenus, CUi *pUi, CGameClient *pGameClient, IInp
 
 	if(!pUi->IsPopupOpen() && !pGameClient->m_GameConsole.IsActive() && pInput->ModifierIsPressed() && pInput->KeyPress(KEY_F))
 		OpenSearchPopup(pMenus, pUi, pGameClient, Button);
+}
+
+void RenderElySearch(CMenus *pMenus, CUi *pUi, CGameClient *pGameClient, IInput *pInput, CUIRect Rect)
+{
+	static char s_SearchId;
+	Rect.Draw(ColorRGBA(0.32f, 0.32f, 0.36f, 0.8f), IGraphics::CORNER_ALL, Rect.h * 0.5f);
+	CUIRect Inside = Rect;
+	Inside.Margin(0.8f, &Inside);
+	Inside.Draw(ColorRGBA(0.075f, 0.075f, 0.09f, 0.98f), IGraphics::CORNER_ALL, Inside.h * 0.5f);
+	CUIRect Icon, Text, Shortcut;
+	Rect.VSplitLeft(Rect.h, &Icon, &Text);
+	Text.VSplitRight(Rect.h * 1.65f, &Text, &Shortcut);
+	pUi->TextRender()->SetFontPreset(EFontPreset::ICON_FONT);
+	pUi->DoLabel(&Icon, FontIcon::MAGNIFYING_GLASS, Rect.h * 0.42f, TEXTALIGN_MC);
+	pUi->TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
+	pUi->DoLabel(&Text, Localize("Search settings..."), Rect.h * 0.34f, TEXTALIGN_ML);
+	Shortcut.Margin(Rect.h * 0.19f, &Shortcut);
+	Shortcut.Draw(ColorRGBA(0.28f, 0.28f, 0.31f, 0.9f), IGraphics::CORNER_ALL, Rect.h * 0.12f);
+	pUi->DoLabel(&Shortcut, "Ctrl + K", Rect.h * 0.27f, TEXTALIGN_MC);
+	if(pUi->DoButtonLogic(&s_SearchId, 0, &Rect, BUTTONFLAG_LEFT) ||
+		(!pUi->IsPopupOpen() && !pGameClient->m_GameConsole.IsActive() && pInput->ModifierIsPressed() && pInput->KeyPress(KEY_K)))
+		OpenSearchPopup(pMenus, pUi, pGameClient, Rect);
 }
 
 void Update(float DeltaTime)

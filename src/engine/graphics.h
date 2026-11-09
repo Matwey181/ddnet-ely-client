@@ -698,6 +698,8 @@ public:
 	void Shutdown() override = 0;
 
 	virtual void Minimize() = 0;
+	virtual void ToggleMaximize() = 0;
+	virtual void SetElyStartScreen(bool Active) = 0;
 
 	virtual int WindowActive() = 0;
 	virtual int WindowOpen() = 0;

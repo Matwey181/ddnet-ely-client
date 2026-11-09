@@ -263,7 +263,7 @@ if(NOT "${CMAKE_CURRENT_BINARY_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
 endif()
 
 set(SERVER_EXECUTABLE DDNet-Server CACHE STRING "Name of the built server executable")
-set(CLIENT_EXECUTABLE DDNet CACHE STRING "Name of the build client executable")
+set(CLIENT_EXECUTABLE Ely-Client CACHE STRING "Name of the build client executable")
 set(IOS_BUNDLE_IDENTIFIER "org.ddnet.client" CACHE STRING "iOS bundle identifier")
 
 ########################################################################
@@ -1837,6 +1837,10 @@ set(EXPECTED_DATA
   editor/switch.png
   editor/tele.png
   editor/tune.png
+  ely/logo.png
+  ely/mascot-background.png
+  ely/third_party/soundvisualizer/LICENSE
+  ely/third_party/soundvisualizer/README.txt
   emoticons.png
   extras.png
   fonts/DejaVuSans.ttf
@@ -2919,6 +2923,7 @@ if(CLIENT)
     component.h
     components/background.cpp
     components/background.h
+    components/bestclient/hook_aim.cpp
     components/bestclient/bestclient.cpp
     components/bestclient/bestclient.h
     components/bestclient/config_presets.cpp
@@ -3080,6 +3085,10 @@ if(CLIENT)
     components/bestclient/hud_editor.h
     components/bestclient/music_player.cpp
     components/bestclient/music_player.h
+    components/bestclient/ely_audio.cpp
+    components/bestclient/ely_audio.h
+    components/bestclient/ely_audio_analysis.h
+    components/bestclient/ely_nebula.h
     components/bestclient/music_player_lyrics.cpp
     components/bestclient/music_player_lyrics.h
     components/bestclient/quick_binds.cpp

@@ -117,6 +117,7 @@ MACRO_CONFIG_INT(BcPrevInpMousesensSmallSens, bc_prev_inp_mousesens_small_sens, 
 MACRO_CONFIG_INT(BcToggleSmallSens, bc_toggle_small_sens, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Use toggle mode for small sens bind")
 
 // Inputs
+MACRO_CONFIG_INT(BcInputDebounce, bc_input_debounce, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Preserve button presses shorter than one simulation tick")
 MACRO_CONFIG_INT(BcInputs, bc_inputs, 0, 0, 6, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Input prediction mode (0 = off, 1 = fast, 2 = best, 3 = saiko, 4 = delta, 5 = f, 6 = cloud)")
 MACRO_CONFIG_INT(BcBestInputAmount, bc_best_input_amount, 0, 0, 1000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Best input prediction amount in 0.01 ticks")
 MACRO_CONFIG_INT(BcBestInputSmoothing, bc_best_input_smoothing, 0, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Best input smoothing amount (0-100%)")
@@ -238,7 +239,7 @@ MACRO_CONFIG_INT(BcMenuUiNewTabOption, bc_menu_ui_new_tab_option, 1, 0, 1, CFGFL
 MACRO_CONFIG_INT(BcMenuUiTabSide, bc_menu_ui_tab_side, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Settings tabs side when Better tab option is on (0 = left, 1 = right)")
 MACRO_CONFIG_INT(BcMenuUiNewColorPicker, bc_menu_ui_new_color_picker, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Use better color picker style when Better UI is enabled")
 MACRO_CONFIG_INT(BcMenuUiBetterFont, bc_menu_ui_better_font, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Use Better font (Actay Wide Bold) instead of default/TClient font")
-MACRO_CONFIG_INT(BcShowStylePicker, bc_show_style_picker, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show one-time menu UI style picker on first launch")
+MACRO_CONFIG_INT(BcShowStylePicker, bc_show_style_picker, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show one-time menu UI style picker on first launch")
 MACRO_CONFIG_INT(BcSettingsNavExpanded, bc_settings_nav_expanded, 0, 0, 7, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Better settings nav expanded groups (bit 0 = DDNet, 1 = TClient, 2 = BestClient)")
 
 // UI Themes
@@ -602,3 +603,23 @@ MACRO_CONFIG_INT(BcWeatherDustSpeed, bc_weather_dust_speed, 100, 25, 300, CFGFLA
 
 // KeybindMap
 MACRO_CONFIG_INT(BcKeybindMapFormat, bc_keybind_map_format, 2, 0, 2, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Last keybind map format (0=100%, 1=86%, 2=60%)")
+
+// Hook aim
+MACRO_CONFIG_INT(BcHookAim, bc_hook_aim, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable aimbot")
+MACRO_CONFIG_INT(BcHookAimFov, bc_hook_aim_fov, 90, 1, 180, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Aimbot field of view in degrees")
+MACRO_CONFIG_INT(BcHookAimSmooth, bc_hook_aim_smooth, 35, 1, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Aimbot smoothing (1 is immediate)")
+MACRO_CONFIG_INT(BcHookAimKey, bc_hook_aim_key, 292, 0, 511, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Hold to aim (292 = mouse2)")
+MACRO_CONFIG_INT(BcHookAimModifiers, bc_hook_aim_modifiers, 0, 0, 31, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Hold to aim modifier mask")
+MACRO_CONFIG_INT(BcHookAimToggleKey, bc_hook_aim_toggle_key, 295, 0, 511, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Aimbot toggle key (295 = mouse5)")
+MACRO_CONFIG_INT(BcHookAimToggleModifiers, bc_hook_aim_toggle_modifiers, 0, 0, 31, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Aimbot toggle modifier mask")
+MACRO_CONFIG_INT(BcHookAimDraw, bc_hook_aim_draw, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Draw the two FOV boundaries")
+MACRO_CONFIG_INT(BcHookAimDecorations, bc_hook_aim_decorations, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Add a soft glow and fading tips to FOV lines")
+MACRO_CONFIG_INT(BcHookAimWalls, bc_hook_aim_walls, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Exclude targets through walls")
+MACRO_CONFIG_INT(BcHookAimDummyOnly, bc_hook_aim_dummy_only, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Only target the other local connection")
+MACRO_CONFIG_INT(BcHookAimRange, bc_hook_aim_range, 0, 0, 3000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Aimbot range limit (0 uses hook tuning)")
+MACRO_CONFIG_INT(BcHookAimLead, bc_hook_aim_lead, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Lead moving targets based on hook travel time")
+MACRO_CONFIG_COL(BcHookAimColor, bc_hook_aim_color, 0xA5934DA9U, CFGFLAG_CLIENT | CFGFLAG_SAVE, "FOV line color when idle")
+MACRO_CONFIG_COL(BcHookAimLockColor, bc_hook_aim_lock_color, 0xA56D91A0U, CFGFLAG_CLIENT | CFGFLAG_SAVE, "FOV line color when locked on")
+MACRO_CONFIG_INT(BcHookAimTargetTint, bc_hook_aim_target_tint, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Tint the player while aiming at them")
+MACRO_CONFIG_COL(BcHookAimTargetColor, bc_hook_aim_target_color, 0x0000FF80U, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Target tint color")
+MACRO_CONFIG_INT(BcHookAimTintStrength, bc_hook_aim_tint_strength, 25, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Target tint strength as a percentage")

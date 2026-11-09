@@ -2708,3 +2708,19 @@ Join
 
 Press '%s' to show cursor.
 == Нажмите '%s', чтобы показать курсор.
+
+
+Customize your game experience
+== Настройте игру под себя
+
+
+More settings
+== Больше настроек
+
+
+Search settings...
+== Поиск настроек...
+
+
+Save power by lowering update rate
+== Снижать частоту для экономии энергии

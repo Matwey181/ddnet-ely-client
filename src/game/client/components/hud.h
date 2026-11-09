@@ -46,6 +46,24 @@ struct SScoreInfo
 
 class CHud : public CComponent
 {
+	struct SElyPanelText
+	{
+		STextContainerIndex m_Container;
+		char m_aText[256] = "";
+		float m_FontSize = 0.0f;
+		float m_MaxWidth = 0.0f;
+		float m_Width = 0.0f;
+		float m_Height = 0.0f;
+	};
+	SElyPanelText m_aElyPanelText[3];
+	float m_ElyPanelWidth = 0.0f;
+	float m_ElyPanelVelocity = 0.0f;
+	float m_ElyTimerReveal = 0.0f;
+	float m_ElyMusicReveal = 0.0f;
+	float m_ElyPanelHeight = 18.5f, m_ElyHeightVelocity = 0.0f;
+	float m_ElyPanelRadius = 9.25f, m_ElyRadiusVelocity = 0.0f;
+	float m_ElyPanelX = -1.0f, m_ElyPanelY = 3.0f, m_ElyXVelocity = 0.0f, m_ElyYVelocity = 0.0f;
+
 	float m_Width, m_Height;
 	// bestclient
 	float m_LastHudWidth = -1.0f;

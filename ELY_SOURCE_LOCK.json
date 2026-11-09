@@ -26,5 +26,14 @@
     "ios_voice_audio.h": "be37488e80bc3b29b3e9c8afd6df8092d3190f7e23db6aa679fbede844851442"
   },
   "voice_chat_removed": true,
-  "voice_removal_sha256": "fed58b9e27fc99db154fcf573a16cf4ee2b8c48ade1ee0317f79de1908659a5d"
+  "voice_removal_sha256": "fed58b9e27fc99db154fcf573a16cf4ee2b8c48ade1ee0317f79de1908659a5d",
+  "ely_update": {
+    "input_zip_sha256": "3b37d9fc286c667d4fdf6b68b6648de6152e10358b1b46b70458532458dfec97",
+    "patch_sha256": "4ae3bf83bb597b49fbb9b21c0cd80eca9a28609f401612471072d130ad65263e",
+    "changed_files": 47,
+    "new_files": 16,
+    "limitations": [
+      "iOS does not provide WASAPI audio loopback for other apps; audio-reactive analysis remains unavailable; local UI Demo is explicitly simulated."
+    ]
+  }
 }

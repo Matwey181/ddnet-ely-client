@@ -49,6 +49,10 @@ bool CCloudInput::CheckNewInput(const CControls &Controls)
 			const bool LeftPressed = Controls.m_aInputDirectionLeft[Dummy] != 0;
 			const bool RightPressed = Controls.m_aInputDirectionRight[Dummy] != 0;
 			NextInput.m_Direction = GameClient()->m_SnapTap.ResolveMovementDirection(Dummy, LeftPressed, RightPressed, false);
+			if(NextInput.m_Direction == 0 && Controls.m_aInputDebounce[Dummy].m_Direction)
+				NextInput.m_Direction = Controls.m_aInputDebounce[Dummy].m_Direction;
+			if(Controls.m_aInputDebounce[Dummy].m_Hook && Controls.HookAimTarget() >= 0)
+				NextInput.m_Hook = Controls.m_aInputDebounce[Dummy].m_Hook > 0;
 		}
 
 		if(m_aInput[Dummy].m_Direction != NextInput.m_Direction)
@@ -66,7 +70,11 @@ bool CCloudInput::CheckNewInput(const CControls &Controls)
 		if(m_aInput[Dummy].m_WantedWeapon != NextInput.m_WantedWeapon)
 			NewInput[Dummy] = true;
 
-		if(Dummy == g_Config.m_ClDummy && g_Config.m_ClSubTickAiming)
+		const bool UseAimbot = Dummy == g_Config.m_ClDummy && Controls.ApplyHookAimInput(NextInput);
+		if(UseAimbot && NextInput.m_Hook && !Controls.m_aLastData[Dummy].m_Hook &&
+			(NextInput.m_TargetX != m_aInput[Dummy].m_TargetX || NextInput.m_TargetY != m_aInput[Dummy].m_TargetY))
+			NewInput[Dummy] = true;
+		if(Dummy == g_Config.m_ClDummy && !UseAimbot && g_Config.m_ClSubTickAiming)
 		{
 			NextInput.m_TargetX = (int)Controls.m_aMousePos[Dummy].x;
 			NextInput.m_TargetY = (int)Controls.m_aMousePos[Dummy].y;

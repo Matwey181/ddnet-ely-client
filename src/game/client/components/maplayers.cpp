@@ -2,6 +2,8 @@
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
 #include "maplayers.h"
 
+#include "bestclient/ely_audio.h"
+
 #include <engine/map.h>
 
 #include <game/client/gameclient.h>
@@ -72,4 +74,6 @@ void CMapLayers::OnRender()
 	// bestclient
 
 	m_MapRenderer.Render(m_Params);
+	if(m_OnlineOnly && m_Type == RENDERTYPE_BACKGROUND && Client()->State() == IClient::STATE_ONLINE)
+		ElyAudio::RenderFlashes(Graphics());
 }

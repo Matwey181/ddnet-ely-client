@@ -22,6 +22,7 @@
 #include <generated/data_types.h>
 
 #include <game/localization.h>
+#include <game/version.h>
 
 #if defined(CONF_VIDEORECORDER)
 #include <engine/shared/video.h>
@@ -2235,7 +2236,7 @@ int CGraphics_Threaded::IssueInit()
 		Flags |= IGraphicsBackend::INITFLAG_VSYNC;
 	}
 
-	const int Result = m_pBackend->Init("BestClient", &g_Config.m_GfxScreen, &g_Config.m_GfxScreenWidth, &g_Config.m_GfxScreenHeight, &g_Config.m_GfxScreenRefreshRate, &g_Config.m_GfxFsaaSamples, Flags, &m_DesktopSize.x, &m_DesktopSize.y, &m_ScreenWidth, &m_ScreenHeight, m_pStorage); // bestclient
+	const int Result = m_pBackend->Init(CLIENT_NAME, &g_Config.m_GfxScreen, &g_Config.m_GfxScreenWidth, &g_Config.m_GfxScreenHeight, &g_Config.m_GfxScreenRefreshRate, &g_Config.m_GfxFsaaSamples, Flags, &m_DesktopSize.x, &m_DesktopSize.y, &m_ScreenWidth, &m_ScreenHeight, m_pStorage); // bestclient
 	m_DrawableWidth = m_ScreenWidth;
 	m_DrawableHeight = m_ScreenHeight;
 	AddBackEndWarningIfExists();
@@ -2621,6 +2622,20 @@ void CGraphics_Threaded::Minimize()
 
 	for(auto &PropChangedListener : m_vPropChangeListeners)
 		PropChangedListener();
+}
+
+void CGraphics_Threaded::ToggleMaximize()
+{
+#if !defined(CONF_PLATFORM_ANDROID) && !defined(CONF_PLATFORM_EMSCRIPTEN)
+	if(g_Config.m_GfxFullscreen != 0)
+		SetWindowParams(0, g_Config.m_GfxBorderless);
+	m_pBackend->ToggleMaximize();
+#endif
+}
+
+void CGraphics_Threaded::SetElyStartScreen(bool Active)
+{
+	m_pBackend->SetElyStartScreen(Active);
 }
 
 void CGraphics_Threaded::WarnPngliteIncompatibleImages(bool Warn)

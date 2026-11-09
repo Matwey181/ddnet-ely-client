@@ -32,20 +32,17 @@ void CBcUiAnimations::ResetTypingAnimation()
 void CBcUiAnimations::OnChatReset()
 {
 	m_aPreviousDisplayedInputText[0] = '\0';
-	m_ChatOpenAnimationStart = 0;
 	m_vTypingGlyphAnims.clear();
 	m_CaretAnimValid = false;
 }
 
 void CBcUiAnimations::OnChatEnable()
 {
-	m_ChatOpenAnimationStart = time_get();
 	ResetTypingAnimation();
 }
 
 void CBcUiAnimations::OnChatDisable()
 {
-	m_ChatOpenAnimationStart = 0;
 	ResetTypingAnimation();
 	m_aPreviousDisplayedInputText[0] = '\0';
 }
@@ -58,7 +55,7 @@ void CBcUiAnimations::SyncTypingBaseline(CLineInput &Input)
 
 void CBcUiAnimations::RefreshTypingAnimation(CLineInput &Input, bool ChatOpen, bool HasComposition)
 {
-	if(!ChatOpen || !BCUiAnimations::Enabled() || g_Config.m_BcChatAnimation == 0 || g_Config.m_BcChatTypingAnimation == 0 || Input.HasSelection() || HasComposition)
+	if(!ChatOpen || !BCUiAnimations::Enabled() || g_Config.m_BcChatAnimation == 0 || g_Config.m_BcChatTypingAnimation == 0 || !g_Config.m_ElyChatTyping || g_Config.m_ElyIslandReducedMotion || Input.HasSelection() || HasComposition)
 	{
 		SyncTypingBaseline(Input);
 		return;
@@ -131,6 +128,21 @@ void CBcUiAnimations::RefreshTypingAnimation(CLineInput &Input, bool ChatOpen, b
 		}
 	}
 
+	// Repeated characters have several equivalent diffs. The editing caret identifies the inserted glyph.
+	const int LengthDelta = (int)CurrentLen - (int)PreviousLen;
+	const int Caret = (int)Input.OffsetFromActualToDisplay(Input.GetCursorOffset());
+	const int EditStart = LengthDelta > 0 ? Caret - LengthDelta : Caret;
+	const int OldEnd = LengthDelta < 0 ? Caret - LengthDelta : EditStart;
+	const int NewEnd = LengthDelta > 0 ? Caret : EditStart;
+	if(LengthDelta != 0 && EditStart >= 0 && OldEnd <= (int)PreviousLen && NewEnd <= (int)CurrentLen &&
+		str_comp_num(pCurrent, m_aPreviousDisplayedInputText, EditStart) == 0 &&
+		str_comp(pCurrent + NewEnd, m_aPreviousDisplayedInputText + OldEnd) == 0)
+	{
+		PrefixBytes = EditStart;
+		SuffixBytesCur = CurrentLen - NewEnd;
+		SuffixBytesPrev = PreviousLen - OldEnd;
+	}
+
 	const size_t RemovedBytes = PreviousLen - PrefixBytes - SuffixBytesPrev;
 	const size_t InsertedBytes = CurrentLen - PrefixBytes - SuffixBytesCur;
 	const int EditOldEndByte = (int)(PrefixBytes + RemovedBytes);
@@ -180,25 +192,16 @@ void CBcUiAnimations::RefreshTypingAnimation(CLineInput &Input, bool ChatOpen, b
 			ByteIndex = NextByteIndex;
 		}
 	}
+	std::sort(m_vTypingGlyphAnims.begin(), m_vTypingGlyphAnims.end(), [](const STypingGlyphAnim &A, const STypingGlyphAnim &B) {
+		return A.m_ByteIndex < B.m_ByteIndex;
+	});
 
 	str_copy(m_aPreviousDisplayedInputText, pCurrent, sizeof(m_aPreviousDisplayedInputText));
 }
 
-float CBcUiAnimations::ChatOpenOffsetY(float ScreenHeight, bool ChatOpen) const
-{
-	const bool Enabled = BCUiAnimations::Enabled() && g_Config.m_BcChatAnimation != 0 && g_Config.m_BcChatOpenAnimation != 0 && g_Config.m_BcChatOpenAnimationMs > 0;
-	if(!ChatOpen || !Enabled || m_ChatOpenAnimationStart <= 0)
-		return 0.0f;
-
-	const float Dur = BCUiAnimations::MsToSeconds(g_Config.m_BcChatOpenAnimationMs);
-	const float Age = (time_get() - m_ChatOpenAnimationStart) / (float)time_freq();
-	const float Progress = Dur > 0.0f ? std::clamp(Age / Dur, 0.0f, 1.0f) : 1.0f;
-	return ScreenHeight * (1.0f - BCUiAnimations::EaseOutCubic(Progress));
-}
-
 float CBcUiAnimations::ChatMessageYOffset(int64_t LineTime, int64_t Now) const
 {
-	if(!BCUiAnimations::Enabled() || g_Config.m_BcChatAnimation == 0 || g_Config.m_BcChatAnimationMs <= 0 || LineTime <= 0)
+	if(!BCUiAnimations::Enabled() || g_Config.m_ElyIslandReducedMotion || g_Config.m_BcChatAnimation == 0 || g_Config.m_BcChatAnimationMs <= 0 || LineTime <= 0)
 		return 0.0f;
 
 	const float Dur = BCUiAnimations::MsToSeconds(g_Config.m_BcChatAnimationMs);
@@ -209,17 +212,20 @@ float CBcUiAnimations::ChatMessageYOffset(int64_t LineTime, int64_t Now) const
 
 CUIRect CBcUiAnimations::ChatInputClipRect(const CUIRect &ClippingRect, float ScreenWidth) const
 {
-	const float TypingTravel = 30.0f;
-	return {0.0f, ClippingRect.y - TypingTravel, ScreenWidth, ClippingRect.h + TypingTravel};
+	const float Padding = std::min(2.0f, ClippingRect.h * 0.12f);
+	const float Left = std::max(0.0f, ClippingRect.x - Padding);
+	const float Right = std::min(ScreenWidth, ClippingRect.x + ClippingRect.w + Padding);
+	return {Left, ClippingRect.y - Padding, Right - Left, ClippingRect.h + 2.0f * Padding};
 }
 
 STextBoundingBox CBcUiAnimations::RenderChatTypingInput(CLineInput &Input, const CUIRect &InputCursorRect, float FontSize, float MessageMaxWidth, bool Changed)
 {
-	const bool TypingEnabled = BCUiAnimations::Enabled() && g_Config.m_BcChatAnimation != 0 && g_Config.m_BcChatTypingAnimation != 0 && g_Config.m_BcChatTypingAnimationMs > 0;
+	const bool TypingEnabled = BCUiAnimations::Enabled() && g_Config.m_BcChatAnimation != 0 &&
+		g_Config.m_BcChatTypingAnimation != 0 && g_Config.m_ElyChatTyping && !g_Config.m_ElyIslandReducedMotion && !Input.HasSelection() && !this->Input()->HasComposition();
 	char aDisplayedInputText[MAX_CHAT_LENGTH];
 	str_copy(aDisplayedInputText, Input.GetDisplayedString(), sizeof(aDisplayedInputText));
-	const float TypingAnimDuration = BCUiAnimations::MsToSeconds(g_Config.m_BcChatTypingAnimationMs);
-	const bool CaretAnimEnabled = TypingEnabled && TypingAnimDuration > 0.0f;
+	const float TypingAnimDuration = g_Config.m_ElyChatTypingDuration / 1000.0f;
+	const bool CaretAnimEnabled = TypingEnabled && Input.IsActive();
 	Input.SetHideCursor(CaretAnimEnabled);
 
 	std::vector<STextColorSplit> vTypingColorSplits;
@@ -251,43 +257,39 @@ STextBoundingBox CBcUiAnimations::RenderChatTypingInput(CLineInput &Input, const
 		}
 	}
 
-	const bool DisableBaseOutline = !vTypingColorSplits.empty();
-	if(DisableBaseOutline)
-		TextRender()->TextOutlineColor(ColorRGBA(0.0f, 0.0f, 0.0f, 0.0f));
+	const ColorRGBA PreviousColor = TextRender()->GetTextColor();
+	const ColorRGBA PreviousOutline = TextRender()->GetTextOutlineColor();
 	const STextBoundingBox BoundingBox = Input.Render(&InputCursorRect, FontSize, TEXTALIGN_TL, Changed, MessageMaxWidth, 0.0f, vTypingColorSplits);
-	if(DisableBaseOutline)
-		TextRender()->TextOutlineColor(TextRender()->DefaultTextOutlineColor());
 
 	for(const auto &TypingGlyphAnim : vActiveTypingGlyphAnims)
 	{
 		const float TypingAnimAge = (time_get() - TypingGlyphAnim.m_StartTime) / (float)time_freq();
 		const float Progress = std::clamp(TypingAnimAge / TypingAnimDuration, 0.0f, 1.0f);
-		const float Ease = BCUiAnimations::EaseOutCubic(Progress);
-		const float OverlayYOffset = -4.5f * (1.0f - Ease);
+		const float Scale = 1.0f + (g_Config.m_ElyChatTypingScale / 100.0f - 1.0f) * std::exp(-7.5f * Progress) * std::cos(5.5f * Progress);
 		const int PrefixBytes = TypingGlyphAnim.m_ByteIndex;
-		char aPrefixText[MAX_CHAT_LENGTH] = "";
 		if(PrefixBytes < 0 || PrefixBytes > str_length(aDisplayedInputText))
 			continue;
-		str_truncate(aPrefixText, sizeof(aPrefixText), aDisplayedInputText, PrefixBytes);
 
 		CTextCursor MeasureCursor;
 		MeasureCursor.SetPosition(vec2(InputCursorRect.x, InputCursorRect.y));
 		MeasureCursor.m_FontSize = FontSize;
 		MeasureCursor.m_LineWidth = MessageMaxWidth;
-		TextRender()->TextColor(ColorRGBA(1.0f, 1.0f, 1.0f, 0.0f));
-		TextRender()->TextOutlineColor(ColorRGBA(0.0f, 0.0f, 0.0f, 0.0f));
-		TextRender()->TextEx(&MeasureCursor, aPrefixText);
+		MeasureCursor.m_Flags = 0;
+		MeasureCursor.m_CursorMode = TEXT_CURSOR_CURSOR_MODE_SET;
+		MeasureCursor.m_CursorCharacter = str_utf8_offset_bytes_to_chars(aDisplayedInputText, PrefixBytes);
+		TextRender()->TextEx(&MeasureCursor, aDisplayedInputText);
+		const float GlyphWidth = TextRender()->TextWidth(FontSize, TypingGlyphAnim.m_aText);
+		const vec2 PivotOffset(GlyphWidth * 0.5f * (Scale - 1.0f), FontSize * (Scale - 1.0f));
 
 		CTextCursor OverlayCursor;
-		OverlayCursor.SetPosition(vec2(MeasureCursor.m_X, MeasureCursor.m_Y + OverlayYOffset));
-		OverlayCursor.m_FontSize = FontSize;
-		OverlayCursor.m_LineWidth = MessageMaxWidth;
-		TextRender()->TextColor(ColorRGBA(1.0f, 1.0f, 1.0f, 0.75f + 0.25f * Ease));
-		TextRender()->TextOutlineColor(TextRender()->DefaultTextOutlineColor().WithMultipliedAlpha(0.75f + 0.25f * Ease));
+		OverlayCursor.SetPosition(MeasureCursor.m_CursorRenderedPosition - PivotOffset);
+		OverlayCursor.m_FontSize = FontSize * Scale;
+		TextRender()->TextColor(PreviousColor);
+		TextRender()->TextOutlineColor(PreviousOutline);
 		TextRender()->TextEx(&OverlayCursor, TypingGlyphAnim.m_aText);
-		TextRender()->TextColor(TextRender()->DefaultTextColor());
 	}
-	TextRender()->TextOutlineColor(TextRender()->DefaultTextOutlineColor());
+	TextRender()->TextOutlineColor(PreviousOutline);
+	TextRender()->TextColor(PreviousColor);
 
 	if(CaretAnimEnabled)
 	{

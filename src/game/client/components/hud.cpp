@@ -1,6 +1,7 @@
 /* (c) Magnus Auvinen. See licence.txt in the root of the distribution for more information. */
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
 #include "hud.h"
+#include "bestclient/fx/fgf_glow.h"
 
 #include "binds.h"
 #include "camera.h"
@@ -8,6 +9,7 @@
 #include "hud_layout.h" // bestclient
 #include "voting.h"
 
+#include <array>
 #include <base/color.h>
 #include <base/time.h>
 
@@ -24,6 +26,7 @@
 #include <game/client/components/bestclient/cursor_trail.h> // bestclient
 #include <game/client/components/bestclient/gradient.h> // bestclient
 #include <game/client/components/bestclient/hud_extras.h> // bestclient
+#include <game/client/components/bestclient/ui_animations.h>
 #include <game/client/components/scoreboard.h>
 #include <game/client/components/skins.h>
 #include <game/client/gameclient.h>
@@ -86,6 +89,9 @@ CHud::CHud()
 
 void CHud::ResetHudContainers()
 {
+	for(auto &Text : m_aElyPanelText)
+		TextRender()->DeleteTextContainer(Text.m_Container);
+
 	for(auto &ScoreInfo : m_aScoreInfo)
 	{
 		TextRender()->DeleteTextContainer(ScoreInfo.m_OptionalNameTextContainerIndex);
@@ -119,6 +125,13 @@ void CHud::OnWindowResize()
 
 void CHud::OnReset()
 {
+	m_ElyPanelWidth = 0.0f;
+	m_ElyPanelVelocity = 0.0f;
+	m_ElyTimerReveal = 0.0f;
+	m_ElyMusicReveal = 0.0f;
+	m_ElyPanelHeight = 18.5f; m_ElyHeightVelocity = 0;
+	m_ElyPanelX = -1; m_ElyXVelocity = m_ElyYVelocity = 0;
+
 	m_TimeCpDiff = 0.0f;
 	m_DDRaceTime = 0;
 	m_FinishTimeLastReceivedTick = 0;
@@ -170,51 +183,218 @@ void CHud::OnInit()
 
 void CHud::RenderGameTimer()
 {
-	// bestclient
-	const bool MusicPlayerOccupiesTimerSlot = g_Config.m_BcMusicPlayer != 0 && !(g_Config.m_ClFocusMode && g_Config.m_ClFocusModeHideSongPlayer);
-	if(MusicPlayerOccupiesTimerSlot)
+	if(!g_Config.m_ElyIslandEnabled || GameClient()->m_Menus.IsActive() || !HudLayout::IsEnabled(HudLayout::MODULE_GAME_TIMER))
 		return;
-	// bestclient
-
-	float Half = m_Width / 2.0f;
-
-	if(!(GameClient()->m_Snap.m_pGameInfoObj->m_GameStateFlags & GAMESTATEFLAG_SUDDENDEATH))
+	const auto *pInfo = GameClient()->m_Snap.m_pGameInfoObj;
+	const int Conn = g_Config.m_ClDummy;
+	char aTime[64] = "";
+	bool Warning = false;
+	if(g_Config.m_ClShowhudTimer && g_Config.m_ElyIslandTimer)
 	{
-		char aBuf[32];
-		int Time = 0;
-		if(GameClient()->m_Snap.m_pGameInfoObj->m_TimeLimit && (GameClient()->m_Snap.m_pGameInfoObj->m_WarmupTimer <= 0))
-		{
-			Time = GameClient()->m_Snap.m_pGameInfoObj->m_TimeLimit * 60 - ((Client()->GameTick(g_Config.m_ClDummy) - GameClient()->m_Snap.m_pGameInfoObj->m_RoundStartTick) / Client()->GameTickSpeed());
-
-			if(GameClient()->m_Snap.m_pGameInfoObj->m_GameStateFlags & GAMESTATEFLAG_GAMEOVER)
-				Time = 0;
-		}
-		else if(GameClient()->m_Snap.m_pGameInfoObj->m_GameStateFlags & GAMESTATEFLAG_RACETIME)
-		{
-			// The Warmup timer is negative in this case to make sure that incompatible clients will not see a warmup timer
-			Time = (Client()->GameTick(g_Config.m_ClDummy) + GameClient()->m_Snap.m_pGameInfoObj->m_WarmupTimer) / Client()->GameTickSpeed();
-		}
+		if(pInfo->m_GameStateFlags & GAMESTATEFLAG_SUDDENDEATH)
+			str_copy(aTime, Localize("Sudden Death"));
 		else
 		{
-			Time = (Client()->GameTick(g_Config.m_ClDummy) - GameClient()->m_Snap.m_pGameInfoObj->m_RoundStartTick) / Client()->GameTickSpeed();
+			int Time;
+			if(pInfo->m_TimeLimit && pInfo->m_WarmupTimer <= 0)
+			{
+				Time = pInfo->m_TimeLimit * 60 - (Client()->GameTick(Conn) - pInfo->m_RoundStartTick) / Client()->GameTickSpeed();
+				if(pInfo->m_GameStateFlags & GAMESTATEFLAG_GAMEOVER)
+					Time = 0;
+				Warning = Time <= 60;
+			}
+			else if(pInfo->m_GameStateFlags & GAMESTATEFLAG_RACETIME)
+				Time = (Client()->GameTick(Conn) + pInfo->m_WarmupTimer) / Client()->GameTickSpeed();
+			else
+				Time = (Client()->GameTick(Conn) - pInfo->m_RoundStartTick) / Client()->GameTickSpeed();
+			str_time((int64_t)std::max(0, Time) * 100, ETimeFormat::DAYS, aTime, sizeof(aTime));
 		}
+	}
 
-		str_time((int64_t)Time * 100, ETimeFormat::DAYS, aBuf, sizeof(aBuf));
-		float FontSize = 10.0f;
-		static float s_TextWidthM = TextRender()->TextWidth(FontSize, "00:00", -1, -1.0f);
-		static float s_TextWidthH = TextRender()->TextWidth(FontSize, "00:00:00", -1, -1.0f);
-		static float s_TextWidth0D = TextRender()->TextWidth(FontSize, "0d 00:00:00", -1, -1.0f);
-		static float s_TextWidth00D = TextRender()->TextWidth(FontSize, "00d 00:00:00", -1, -1.0f);
-		static float s_TextWidth000D = TextRender()->TextWidth(FontSize, "000d 00:00:00", -1, -1.0f);
-		float w = Time >= 3600 * 24 * 100 ? s_TextWidth000D : (Time >= 3600 * 24 * 10 ? s_TextWidth00D : (Time >= 3600 * 24 ? s_TextWidth0D : (Time >= 3600 ? s_TextWidthH : s_TextWidthM)));
-		// last 60 sec red, last 10 sec blink
-		if(GameClient()->m_Snap.m_pGameInfoObj->m_TimeLimit && Time <= 60 && (GameClient()->m_Snap.m_pGameInfoObj->m_WarmupTimer <= 0))
+	const float Scale = g_Config.m_ElyIslandScale / 100.0f;
+	const bool Demo = Client()->State() == IClient::STATE_DEMOPLAYBACK;
+	const ColorRGBA PreviousColor = TextRender()->GetTextColor();
+	bool FontChanged = false;
+	const auto PrepareText = [&](int Id, const char *pText, float Size, float MaxWidth) -> SElyPanelText & {
+		SElyPanelText &Text = m_aElyPanelText[Id];
+		if(!pText[0])
 		{
-			float Alpha = Time <= 10 && (2 * time() / time_freq()) % 2 ? 0.5f : 1.0f;
-			TextRender()->TextColor(1.0f, 0.25f, 0.25f, Alpha);
+			if(Text.m_Container.Valid()) TextRender()->DeleteTextContainer(Text.m_Container);
+			Text.m_aText[0] = 0;
+			Text.m_Width = Text.m_Height = 0;
+			return Text;
 		}
-		TextRender()->Text(Half - w / 2, 2, FontSize, aBuf, -1.0f);
-		TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
+		if(Text.m_Container.Valid() && str_comp(Text.m_aText, pText) == 0 && Text.m_FontSize == Size && Text.m_MaxWidth == MaxWidth)
+			return Text;
+		TextRender()->DeleteTextContainer(Text.m_Container);
+		str_copy(Text.m_aText, pText);
+		Text.m_FontSize = Size;
+		Text.m_MaxWidth = MaxWidth;
+		TextRender()->SetCustomFace(Id == 0 ? BESTCLIENT_BETTER_FONT_FACE : "DejaVu Sans");
+		TextRender()->TextColor(1, 1, 1, 1);
+		FontChanged = true;
+		STextSizeProperties Props{};
+		Props.m_pMaxCharacterHeightInLine = &Text.m_Height;
+		Text.m_Width = TextRender()->TextWidth(Size, pText, -1, MaxWidth, TEXTFLAG_ELLIPSIS_AT_END | TEXTFLAG_STOP_AT_END, Props);
+		CTextCursor Cursor;
+		Cursor.SetPosition(vec2(0, 0));
+		Cursor.m_FontSize = Size;
+		Cursor.m_MaxLines = 1;
+		Cursor.m_LineWidth = MaxWidth;
+		Cursor.m_Flags |= TEXTFLAG_ELLIPSIS_AT_END | TEXTFLAG_STOP_AT_END;
+		TextRender()->CreateTextContainer(Text.m_Container, &Cursor, pText);
+		return Text;
+	};
+	SElyPanelText &Brand = PrepareText(0, g_Config.m_ElyIslandBrand ? "ely." : "", 11.5f * Scale, 32.0f * Scale);
+	SElyPanelText &Server = PrepareText(1, g_Config.m_ElyIslandServer ? Client()->ServerInfo().m_aName : "DDNet", 8.0f * Scale, 78.0f * Scale);
+	SElyPanelText &Timer = PrepareText(2, aTime[0] ? aTime : "00:00", 8.5f * Scale, 72.0f * Scale);
+	const float Dt = std::clamp(Client()->RenderFrameTime(), 0.0f, 0.05f);
+	const bool Animate = g_Config.m_BcAnimations != 0 && !g_Config.m_ElyIslandReducedMotion;
+	m_ElyTimerReveal = Animate ? mix(m_ElyTimerReveal, aTime[0] ? 1.0f : 0.0f, 1.0f - std::exp(-18.0f * Dt)) : (aTime[0] ? 1.0f : 0.0f);
+	const float TimerPart = m_ElyTimerReveal * (Timer.m_Width + 15.0f * Scale);
+	const auto Music = GameClient()->m_MusicPlayer.ElyIslandState();
+	m_ElyMusicReveal = Animate ? mix(m_ElyMusicReveal, Music.m_Music ? 1.0f : 0.0f, 1.0f - std::exp(-14.0f * Dt)) : (Music.m_Music ? 1.0f : 0.0f);
+	const float MaxWidth = std::min(m_Width - 12.0f, g_Config.m_ElyIslandMaxWidth * Scale);
+	const float NormalWidth = 20.0f * Scale + Brand.m_Width + (g_Config.m_ElyIslandConnection ? 20.0f * Scale : 0.0f) + (Server.m_Width > 0 ? Server.m_Width + 11.0f * Scale : 0.0f) + TimerPart;
+	const float MusicWidth = Music.m_Expanded ? 164.0f : 144.0f + (100 - g_Config.m_ElyIslandCompactness) * .3f;
+	const float TargetWidth = std::clamp(mix(NormalWidth, MusicWidth * Scale, m_ElyMusicReveal), 40.0f * Scale, MaxWidth);
+	const float TargetHeight = mix(17.0f, Music.m_Expanded ? Music.m_ExpandedHeight : 28.0f, m_ElyMusicReveal) * Scale;
+	const float Duration = (TargetWidth > m_ElyPanelWidth ? g_Config.m_ElyIslandExpandMs : g_Config.m_ElyIslandCollapseMs) / 300.0f;
+	const float Frequency = std::sqrt((float)g_Config.m_ElyIslandStiffness) / std::max(.25f, Duration);
+	const float Damping = std::clamp(g_Config.m_ElyIslandDamping / 100.0f, .25f, .99f);
+	const auto Spring = [&](float &Value, float &Velocity, float Target) {
+		if(Animate) BCUiAnimations::SpringTo(Value, Velocity, Target, Dt, Frequency, Damping);
+		else { Value = Target; Velocity = 0; }
+	};
+	if(m_ElyPanelWidth <= 0.0f) m_ElyPanelWidth = TargetWidth * .95f;
+	Spring(m_ElyPanelWidth, m_ElyPanelVelocity, TargetWidth);
+	Spring(m_ElyPanelHeight, m_ElyHeightVelocity, TargetHeight);
+	const float Width = std::clamp(m_ElyPanelWidth, 30.0f, MaxWidth);
+	const float Height = std::max(14.0f * Scale, m_ElyPanelHeight);
+	const auto Layout = HudLayout::Get(HudLayout::MODULE_GAME_TIMER, m_Width, m_Height);
+	const bool Manual = HudLayout::HasPositionOverride(HudLayout::MODULE_GAME_TIMER);
+	const float TargetX = std::clamp((Manual ? Layout.m_X : (m_Width - Width) * .5f) + g_Config.m_ElyIslandX, 2.0f, m_Width - Width - 2.0f);
+	const float TargetY = std::clamp((Manual ? Layout.m_Y : 6.0f) + g_Config.m_ElyIslandY, 2.0f, m_Height - Height - 2.0f);
+	if(m_ElyPanelX < 0) { m_ElyPanelX = TargetX; m_ElyPanelY = TargetY; }
+	Spring(m_ElyPanelX, m_ElyXVelocity, TargetX);
+	Spring(m_ElyPanelY, m_ElyYVelocity, TargetY);
+	Spring(m_ElyPanelRadius, m_ElyRadiusVelocity, std::min({Height * .5f, Width * .5f, mix(Height * .5f, 12.0f * Scale, Music.m_Expanded ? m_ElyMusicReveal : 0.0f)}) * g_Config.m_ElyIslandRounding / 100.0f);
+	const CUIRect Panel = {m_ElyPanelX, m_ElyPanelY, Width, Height};
+	const float Alpha = HudLayout::AlphaFactor(HudLayout::MODULE_GAME_TIMER) * g_Config.m_ElyIslandOpacity / 100.0f;
+	const float Radius = std::clamp(m_ElyPanelRadius, .3f, std::min(Width, Height) * .5f);
+	const CUIRect Shadow = {Panel.x - .5f * Scale, Panel.y + .8f * Scale, Panel.w + Scale, Panel.h + .3f * Scale};
+	Shadow.Draw(ColorRGBA(0, 0, 0, g_Config.m_ElyIslandShadow / 100.0f * Alpha), IGraphics::CORNER_ALL, Radius);
+	const ColorRGBA Surface = color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ElyIslandColor)).WithMultipliedAlpha(Alpha);
+	// Sample the straight edges as well as the caps: the local wave must bend the outline.
+	constexpr int Samples = 112;
+	std::array<vec2, (Samples + 1) * 2> aContour;
+	const float Motion = Animate ? std::sin(Client()->GlobalTime() * 1.3f) : 0.0f;
+	const float Flex = std::clamp(1.7f * Scale * g_Config.m_ElyIslandElasticity / 12.0f + std::abs(m_ElyPanelVelocity) * .003f, 0.0f, 3.0f * Scale);
+	for(int i = 0; i <= Samples; ++i)
+	{
+		const float U = i / (float)Samples, X = U * Width;
+		const float CapX = X < Radius ? X - Radius : (X > Width - Radius ? X - Width + Radius : 0);
+		const float CapY = Radius - std::sqrt(std::max(0.0f, Radius * Radius - CapX * CapX));
+		const float Wave = std::exp(-std::pow((U - .40f - Motion * .018f) / .115f, 2.0f)) * std::sin(U * pi);
+		aContour[i] = vec2(Panel.x + X, Panel.y + CapY - Flex * Wave);
+		aContour[(Samples + 1) * 2 - 1 - i] = vec2(Panel.x + X, Panel.y + Height - CapY + Flex * Wave);
+	}
+	Graphics()->TextureSet(FgfGlow::CreateGlowTexture(Graphics()));
+	Graphics()->QuadsBegin();
+	Graphics()->QuadsSetRotation(0);
+	Graphics()->QuadsSetSubset(0, 0, 1, 1);
+	Graphics()->SetColor(.62f, .22f, 1.0f, Alpha * .65f);
+	IGraphics::CQuadItem aHalo[] = {
+		{Panel.x + Width * .40f, Panel.y - Flex * .8f, Width * .42f, 8.0f * Scale},
+		{Panel.x + Width * .40f, Panel.y + Height + Flex * .8f, Width * .42f, 8.0f * Scale}};
+	Graphics()->QuadsDraw(aHalo, 2);
+	Graphics()->QuadsEnd();
+	Graphics()->TextureClear(); Graphics()->QuadsBegin();
+	for(int Layer = 7; Layer >= 0; --Layer)
+	{
+		const float Thickness = (.22f + Layer * .52f) * Scale;
+		for(size_t i = 0; i < aContour.size(); ++i)
+		{
+			const vec2 A = aContour[i], B = aContour[(i + 1) % aContour.size()];
+			const float U = ((A.x + B.x) * .5f - Panel.x) / Width;
+			const float Light = std::exp(-std::pow((U - .40f) / .18f, 2.0f));
+			const float Opacity = Layer == 0 ? .85f : (.12f * (1 - Layer / 8.0f));
+			Graphics()->SetColor(.48f + .32f * Light, .40f + .12f * Light, .72f + .28f * Light, Alpha * Opacity * (.35f + .65f * Light));
+			const vec2 NA = normalize(A - Panel.Center()), NB = normalize(B - Panel.Center());
+			const IGraphics::CFreeformItem Ring(A, B, A + NA * Thickness, B + NB * Thickness);
+			Graphics()->QuadsDrawFreeform(&Ring, 1);
+		}
+	}
+	const ColorRGBA CenterColor(Surface.r * .35f, Surface.g * .30f, Surface.b * .48f + .012f, Alpha);
+	const auto GlassEdge = [&](vec2 Point) {
+		const float Edge = std::clamp(std::abs(Point.y - Panel.Center().y) / (Height * .5f), 0.0f, 1.0f);
+		const float U = (Point.x - Panel.x) / Width;
+		const float Accent = std::exp(-std::pow((U - .40f) / .16f, 2.0f)) * Edge;
+		return ColorRGBA(CenterColor.r + .045f * Edge + .025f * Accent, CenterColor.g + .040f * Edge, CenterColor.b + .068f * Edge + .045f * Accent, Alpha);
+	};
+	for(int i = 0; i < Samples; ++i)
+	{
+		const vec2 A = aContour[i], B = aContour[i + 1];
+		const vec2 C = aContour[aContour.size() - 1 - i], D = aContour[aContour.size() - 2 - i];
+		const vec2 MA(A.x, Panel.Center().y), MB(B.x, Panel.Center().y);
+		Graphics()->SetColor4(GlassEdge(A), GlassEdge(B), CenterColor, CenterColor);
+		const IGraphics::CFreeformItem Upper(A, B, MA, MB);
+		Graphics()->QuadsDrawFreeform(&Upper, 1);
+		Graphics()->SetColor4(CenterColor, CenterColor, GlassEdge(C), GlassEdge(D));
+		const IGraphics::CFreeformItem Lower(MA, MB, C, D);
+		Graphics()->QuadsDrawFreeform(&Lower, 1);
+	}
+	// A thin inner reflection gives the edge depth without blurring the game scene.
+	for(size_t i = 0; i < aContour.size(); ++i)
+	{
+		const vec2 A = aContour[i], B = aContour[(i + 1) % aContour.size()];
+		const vec2 NA = normalize(A - Panel.Center()), NB = normalize(B - Panel.Center());
+		const float TopLight = A.y < Panel.Center().y ? .30f : .12f;
+		Graphics()->SetColor4(ColorRGBA(.90f, .86f, 1, Alpha * TopLight), ColorRGBA(.90f, .86f, 1, Alpha * TopLight), ColorRGBA(.9f,.86f,1,0), ColorRGBA(.9f,.86f,1,0));
+		const IGraphics::CFreeformItem Bevel(A, B, A - NA * .65f * Scale, B - NB * .65f * Scale);
+		Graphics()->QuadsDrawFreeform(&Bevel, 1);
+	}
+	Graphics()->QuadsEnd();
+	// HUD coordinates use a 300-unit canvas, unlike the settings UI canvas.
+	const float PixelScaleX = Graphics()->ScreenWidth() / m_Width;
+	const float PixelScaleY = Graphics()->ScreenHeight() / m_Height;
+	Graphics()->ClipEnable((int)(Panel.x * PixelScaleX), (int)(Panel.y * PixelScaleY), (int)std::ceil(Panel.w * PixelScaleX), (int)std::ceil(Panel.h * PixelScaleY));
+	float X = Panel.x + 10.0f * Scale;
+	const auto DrawText = [&](SElyPanelText &Text, float Y, ColorRGBA Color) {
+		if(Text.m_Container.Valid())
+			TextRender()->RenderTextContainer(Text.m_Container, Color.WithMultipliedAlpha(Alpha * (1.0f - m_ElyMusicReveal)), ColorRGBA(0, 0, 0, 0), X, Y + (Height - Text.m_Height) * 0.5f);
+		X += Text.m_Width;
+	};
+	DrawText(Brand, Panel.y - 1.0f * Scale, ColorRGBA(1, 1, 1, 1));
+	const auto Divider = [&](float Opacity) {
+		const CUIRect Line = {X + 5.0f * Scale, Panel.y + 5.0f * Scale, 0.35f * Scale, Height - 10.0f * Scale};
+		Line.Draw(ColorRGBA(0.75f, 0.75f, 0.78f, Opacity * Alpha * (1.0f - m_ElyMusicReveal)), IGraphics::CORNER_NONE, 0);
+		X += 11.0f * Scale;
+	};
+	if(g_Config.m_ElyIslandConnection) Divider(0.72f);
+	const int LocalId = GameClient()->m_Snap.m_LocalClientId;
+	const CNetObj_PlayerInfo *pPlayer = LocalId >= 0 ? GameClient()->m_Snap.m_apPlayerInfos[LocalId] : nullptr;
+	const int Ping = pPlayer ? pPlayer->m_Latency : 0;
+	const int Bars = Demo ? 0 : (Client()->ConnectionProblems() ? 0 : (Ping < 80 ? 4 : (Ping < 150 ? 3 : (Ping < 250 ? 2 : 1))));
+	for(int i = 0; i < (g_Config.m_ElyIslandConnection ? 4 : 0); ++i)
+	{
+		const float H = (2.0f + i * 1.45f) * Scale;
+		const CUIRect Bar = {X + i * 2.25f * Scale, Panel.y + Height * 0.5f + 3.2f * Scale - H, 1.5f * Scale, H};
+		Bar.Draw(ColorRGBA(0.98f, 0.98f, 1.0f, (i < Bars ? 1.0f : 0.24f) * Alpha * (1.0f - m_ElyMusicReveal)), IGraphics::CORNER_ALL, 0.4f);
+	}
+	if(g_Config.m_ElyIslandConnection) X += 9.0f * Scale;
+	if(Server.m_Width > 0) { Divider(.72f); DrawText(Server, Panel.y, ColorRGBA(1, 1, 1, 1)); }
+	if(m_ElyTimerReveal > 0.002f)
+	{
+		Divider(0.72f * m_ElyTimerReveal);
+		DrawText(Timer, Panel.y, ColorRGBA(1, 1, 1, (Warning ? 0.75f : 1.0f) * m_ElyTimerReveal));
+	}
+	Graphics()->ClipDisable();
+	GameClient()->m_MusicPlayer.RenderElyIslandContent(Panel, Alpha * m_ElyMusicReveal, Scale);
+	if(FontChanged)
+	{
+		BestClientApplyMenuFont(TextRender());
+		TextRender()->TextColor(PreviousColor);
 	}
 }
 
@@ -2185,6 +2365,11 @@ CUIRect CHud::GetFrozenHudRect(bool ForcePreview) const
 	int MaxTees = (int)(8.3f * (m_Width / m_Height) * 13.0f / TeeSize);
 	if(!g_Config.m_ClShowfps && !g_Config.m_ClShowpred)
 		MaxTees = (int)(9.5f * (m_Width / m_Height) * 13.0f / TeeSize);
+	if(!HudLayout::HasPositionOverride(HudLayout::MODULE_FROZEN_HUD))
+	{
+		const float RightColumnWidth = (m_Width - std::max(m_ElyPanelWidth, 180.0f)) * 0.5f - 8.0f;
+		MaxTees = std::min(MaxTees, std::max(1, (int)(RightColumnWidth / TeeSize)));
+	}
 	MaxTees = std::max(MaxTees, 1);
 	const int MaxRows = std::max(g_Config.m_TcFrozenMaxRows, 1);
 	const int TotalRows = std::max(1, std::min(MaxRows, (NumInTeam + MaxTees - 1) / MaxTees));
@@ -2199,6 +2384,8 @@ CUIRect CHud::GetFrozenHudRect(bool ForcePreview) const
 		Rect.x = Layout.m_X - Rect.w / 2.0f;
 	else
 		Rect.x = Layout.m_X - TeeSize / 2.0f;
+	if(!HudLayout::HasPositionOverride(HudLayout::MODULE_FROZEN_HUD))
+		Rect.x = m_Width - Rect.w - 3.0f;
 	Rect.x = std::clamp(Rect.x, 0.0f, std::max(0.0f, m_Width - Rect.w));
 	Rect.y = std::clamp(Rect.y, 0.0f, std::max(0.0f, m_Height - Rect.h));
 	return PushHudRectFromMusicPlayer(GameClient(), Rect, m_Width, m_Height, ForcePreview);
@@ -2250,6 +2437,11 @@ void CHud::RenderFrozenHud(bool ForcePreview)
 	int MaxTees = (int)(8.3f * (m_Width / m_Height) * 13.0f / TeeSize);
 	if(!g_Config.m_ClShowfps && !g_Config.m_ClShowpred)
 		MaxTees = (int)(9.5f * (m_Width / m_Height) * 13.0f / TeeSize);
+	if(!HudLayout::HasPositionOverride(HudLayout::MODULE_FROZEN_HUD))
+	{
+		const float RightColumnWidth = (m_Width - std::max(m_ElyPanelWidth, 180.0f)) * 0.5f - 8.0f;
+		MaxTees = std::min(MaxTees, std::max(1, (int)(RightColumnWidth / TeeSize)));
+	}
 	MaxTees = std::max(MaxTees, 1);
 	const int MaxRows = std::max(g_Config.m_TcFrozenMaxRows, 1);
 	const bool Overflow = NumInTeam > MaxTees * MaxRows;
@@ -2437,10 +2629,9 @@ void CHud::OnRender()
 			RenderSpectatorHud();
 		}
 
-		if(g_Config.m_ClShowhudTimer)
-			RenderGameTimer();
+		RenderGameTimer();
 		RenderPauseNotification();
-		RenderSuddenDeath();
+
 		// bestclient
 		if(!HudEditorActive)
 		{

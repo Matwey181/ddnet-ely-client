@@ -1185,6 +1185,21 @@ void CPlayers::RenderPlayer(
 		RenderTools()->RenderTee(&State, &RenderInfo, Player.m_Emote, Direction, ShadowPosition, g_Config.m_ClUnpredictedShadowAlpha / 100.f, Local, JellyDeform.m_BodyScale, JellyDeform.m_FeetScale, JellyDeform.m_BodyAngle, JellyDeform.m_FeetAngle); // bestclient
 	}
 
+	if(!RenderGhost && ClientId >= 0 && g_Config.m_BcHookAimTargetTint && ClientId == GameClient()->m_Controls.HookAimTarget())
+	{
+		const ColorRGBA Tint = color_cast<ColorRGBA>(ColorHSLA(g_Config.m_BcHookAimTargetColor));
+		const float Strength = g_Config.m_BcHookAimTintStrength / 100.0f;
+		const auto ApplyTint = [&](ColorRGBA &Color) {
+			Color.r = mix(Color.r, Tint.r, Strength);
+			Color.g = mix(Color.g, Tint.g, Strength);
+			Color.b = mix(Color.b, Tint.b, Strength);
+		};
+		ApplyTint(RenderInfo.m_ColorBody);
+		ApplyTint(RenderInfo.m_ColorFeet);
+		auto &Sixup = RenderInfo.m_aSixup[g_Config.m_ClDummy];
+		ApplyTint(Sixup.m_aColors[protocol7::SKINPART_BODY]);
+		ApplyTint(Sixup.m_aColors[protocol7::SKINPART_FEET]);
+	}
 	RenderTools()->RenderTee(&State, &RenderInfo, Player.m_Emote, Direction, Position, Alpha, Local, JellyDeform.m_BodyScale, JellyDeform.m_FeetScale, JellyDeform.m_BodyAngle, JellyDeform.m_FeetAngle); // bestclient
 
 	// bestclient

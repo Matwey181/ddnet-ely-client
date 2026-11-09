@@ -62,6 +62,20 @@ float DoScrollbarH(CUi *pUi, const void *pId, const CUIRect *pRect, float Curren
 
 	const bool Active = pUi->CheckActiveItem(pId);
 	const bool Hovered = pUi->HotItem() == pId;
+	if(IsElySettingsScope())
+	{
+		const float Radius = std::max(2.0f, pRect->h * 0.21f);
+		const CUIRect Track = {pRect->x + Radius, pRect->y + pRect->h * 0.42f, std::max(1.0f, pRect->w - Radius * 2.0f), pRect->h * 0.16f};
+		Track.Draw(ColorRGBA(0.25f, 0.25f, 0.28f, 1), IGraphics::CORNER_ALL, Track.h * 0.5f);
+		CUIRect Fill = Track;
+		Fill.w = Track.w * ReturnValue;
+		if(Fill.w > 0)
+			Fill.Draw(ColorRGBA(0.95f, 0.95f, 0.96f, 1), IGraphics::CORNER_ALL, std::min(Fill.w, Fill.h) * 0.5f);
+		const float KnobRadius = Active || Hovered ? Radius * 1.08f : Radius;
+		const CUIRect Knob = {Track.x + Track.w * ReturnValue - KnobRadius, pRect->y + pRect->h * 0.5f - KnobRadius, KnobRadius * 2, KnobRadius * 2};
+		Knob.Draw(ColorRGBA(0.98f, 0.98f, 0.99f, 1), IGraphics::CORNER_ALL, KnobRadius);
+		return ReturnValue;
+	}
 	DrawUiScrollbar(&Rail, ColorRGBA(1.0f, 1.0f, 1.0f, 0.25f), false, IGraphics::CORNER_ALL, Rounding);
 
 	CUIRect Fill = Rail;

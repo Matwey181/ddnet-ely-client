@@ -230,6 +230,7 @@ class CGraphicsBackend_SDL_GL : public CGraphicsBackend_Threaded
 	char m_aRendererString[GPU_INFO_STRING_SIZE] = {};
 
 	EBackendType m_BackendType = BACKEND_TYPE_AUTO;
+	bool m_ElyStartScreen = false;
 
 	char m_aErrorString[256];
 
@@ -255,6 +256,8 @@ public:
 	void GetCurrentVideoMode(CVideoMode &CurMode, float HiDPIScale, int MaxWindowWidth, int MaxWindowHeight, int ScreenId) override;
 
 	void Minimize() override;
+	void ToggleMaximize() override;
+	void SetElyStartScreen(bool Active) override;
 	void SetWindowParams(int FullscreenMode, bool IsBorderless) override;
 	bool SetWindowScreen(int Index, bool MoveToCenter, ivec2 *pDesktopSize) override;
 	bool UpdateDisplayMode(int Index, ivec2 *pDesktopSize) override;

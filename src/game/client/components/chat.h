@@ -23,6 +23,7 @@
 #include <algorithm> // bestclient
 
 #include <vector>
+#include <string>
 
 class CTranslateResponse
 {
@@ -94,6 +95,18 @@ class CChat : public CComponent
 	int m_PrevHudLayoutScale = -1;
 	bool m_PrevHudLayoutEnabled = true;
 	bool m_PrevModeActive = false;
+	float m_InputPillWidth = 0.0f;
+	float m_InputPillWidthVelocity = 0.0f;
+	float m_InputPillHeight = 0.0f;
+	float m_InputPillHeightVelocity = 0.0f;
+	float m_InputPillReveal = 0.0f;
+	float m_InputPillRevealVelocity = 0.0f;
+	float m_InputPillFontSize = 0.0f;
+	float m_InputPillMeasureWidth = 0.0f;
+	vec2 m_InputPillTextSize = vec2(0.0f, 0.0f);
+	std::string m_InputPillMeasuredText;
+	std::string m_ClosingInputText;
+	bool m_ClosingInputTeam = false;
 	// bestclient
 
 	CLine m_aLines[MAX_LINES];

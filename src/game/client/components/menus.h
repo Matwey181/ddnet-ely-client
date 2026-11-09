@@ -667,6 +667,8 @@ protected:
 
 	// found in menus_settings_general.cpp
 	void RenderSettingsGeneral(CUIRect MainView);
+	void RenderSettingsElyGeneral(CUIRect MainView);
+	void RenderSettingsElyMusicEffects(CUIRect MainView);
 	void RenderThemeSelection(CUIRect MainView);
 
 	// found in menus_settings_graphics.cpp
@@ -773,6 +775,7 @@ public:
 
 	void OnInterfacesInit(CGameClient *pClient) override;
 	void OnInit() override;
+	void OnConsoleInit() override;
 
 	void OnStateChange(int NewState, int OldState) override;
 	void OnWindowResize() override;
@@ -805,8 +808,8 @@ public:
 	};
 
 	// bestclient
-	int Popup() const { return m_Popup; }
 	bool IsIngameGamePage() const { return m_MenuActive && Client()->State() == IClient::STATE_ONLINE && m_GamePage == PAGE_GAME; }
+	bool HasOpenPopup() const { return m_Popup != POPUP_NONE; }
 	bool IsServerBrowserPageActive() const
 	{
 		return (Client()->State() == IClient::STATE_OFFLINE && m_MenuPage >= PAGE_INTERNET && m_MenuPage <= PAGE_FAVORITE_COMMUNITY_5) ||
@@ -836,6 +839,7 @@ public:
 		SETTINGS_CONFIGS, // TClient
 		SETTINGS_CREDITS,
 		SETTINGS_TOUCH,
+		SETTINGS_MUSIC_EFFECTS,
 		SETTINGS_LENGTH,
 	};
 
@@ -1012,6 +1016,7 @@ private:
 
 	// found in components/bestclient/menus_bestclient.cpp // bestclient
 	void RenderSettingsBestClient(CUIRect MainView);
+	void RenderSettingsBestClientHookAim(CUIRect MainView);
 	void RenderSettingsBestClientVisuals(CUIRect MainView);
 	void RenderSettingsBestClientGameplay(CUIRect MainView);
 	void RenderSettingsBestClientOthers(CUIRect MainView);
@@ -1152,6 +1157,7 @@ private:
 public:
 	void CloseBestClientFun();
 	void SetBestClientSettingsTab(int Tab);
+	void OpenHookAimSettings();
 	int GetBestClientSettingsTab() const;
 	void SetTClientSettingsTab(int Tab);
 	int GetTClientSettingsTab() const;

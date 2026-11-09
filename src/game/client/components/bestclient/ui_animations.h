@@ -54,6 +54,19 @@ inline float EaseOutCubic(float t)
 	return 1.0f - Inv * Inv * Inv;
 }
 
+inline void SpringTo(float &Value, float &Velocity, float Target, float Dt, float Frequency = 28.0f, float Damping = 0.82f)
+{
+	Dt = std::clamp(Dt, 0.0f, 0.1f);
+	const float Offset = Value - Target;
+	const float DampedFrequency = Frequency * std::sqrt(1.0f - Damping * Damping);
+	const float Decay = std::exp(-Damping * Frequency * Dt);
+	const float Sine = std::sin(DampedFrequency * Dt);
+	const float Cosine = std::cos(DampedFrequency * Dt);
+	const float Amplitude = (Velocity + Damping * Frequency * Offset) / DampedFrequency;
+	Value = Target + Decay * (Offset * Cosine + Amplitude * Sine);
+	Velocity = Decay * (Velocity * Cosine - (Damping * Frequency * Amplitude + DampedFrequency * Offset) * Sine);
+}
+
 inline float UpdatePhase(float &Phase, float Target, float Dt, float DurationSeconds)
 {
 	Target = Clamp01(Target);
@@ -193,7 +206,6 @@ class CBcUiAnimations : public CComponent
 	};
 
 	char m_aPreviousDisplayedInputText[MAX_CHAT_LENGTH] = "";
-	int64_t m_ChatOpenAnimationStart = 0;
 	std::vector<STypingGlyphAnim> m_vTypingGlyphAnims;
 	vec2 m_CaretVisualPos = vec2(0.0f, 0.0f);
 	vec2 m_CaretAnimFromPos = vec2(0.0f, 0.0f);
@@ -216,7 +228,6 @@ public:
 	void SyncTypingBaseline(CLineInput &Input);
 	void RefreshTypingAnimation(CLineInput &Input, bool ChatOpen, bool HasComposition);
 
-	float ChatOpenOffsetY(float ScreenHeight, bool ChatOpen) const;
 	float ChatMessageYOffset(int64_t LineTime, int64_t Now) const;
 	CUIRect ChatInputClipRect(const CUIRect &ClippingRect, float ScreenWidth) const;
 	STextBoundingBox RenderChatTypingInput(CLineInput &Input, const CUIRect &InputCursorRect, float FontSize, float MessageMaxWidth, bool Changed);

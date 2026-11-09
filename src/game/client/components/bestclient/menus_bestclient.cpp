@@ -52,6 +52,7 @@ enum
 	BESTCLIENT_TAB_OTHERS,
 	BESTCLIENT_TAB_CONFIGS,
 	BESTCLIENT_TAB_INFO,
+	BESTCLIENT_TAB_HOOK_AIM,
 	NUM_BESTCLIENT_TABS,
 };
 
@@ -68,6 +69,18 @@ void CMenus::SetBestClientSettingsTab(int Tab)
 int CMenus::GetBestClientSettingsTab() const
 {
 	return s_CurBestClientTab;
+}
+
+void CMenus::OpenHookAimSettings()
+{
+	SetActive(true);
+	if(Client()->State() == IClient::STATE_ONLINE || Client()->State() == IClient::STATE_DEMOPLAYBACK)
+		m_GamePage = PAGE_SETTINGS;
+	else
+		SetMenuPage(PAGE_SETTINGS);
+	g_Config.m_UiSettingsPage = SETTINGS_BESTCLIENT;
+	s_ShowBestClientFun = false;
+	SetBestClientSettingsTab(BESTCLIENT_TAB_HOOK_AIM);
 }
 
 void CMenus::OpenBestClientFun()
@@ -161,7 +174,7 @@ void CMenus::RenderPopupStylePicker(CUIRect Box)
 				s_NewTab = 1;
 			Tabs.HSplitTop(8.0f, nullptr, &Tabs);
 			Tabs.HSplitTop(26.0f, &Row, &Tabs);
-			if(DoButton_MenuTab(&s_NewTabBestClient, BcLocalize("BestClient"), s_NewTab == 2, &Row, IGraphics::CORNER_R, nullptr, nullptr, nullptr, nullptr, 10.0f))
+			if(DoButton_MenuTab(&s_NewTabBestClient, "Ely Client", s_NewTab == 2, &Row, IGraphics::CORNER_R, nullptr, nullptr, nullptr, nullptr, 10.0f))
 				s_NewTab = 2;
 		}
 		else
@@ -179,7 +192,7 @@ void CMenus::RenderPopupStylePicker(CUIRect Box)
 				s_LegacyTab = 2;
 			Tabs.HSplitTop(4.0f, nullptr, &Tabs);
 			Tabs.HSplitTop(22.0f, &Row, &Tabs);
-			if(DoButton_MenuTab(&s_LegacyTabBestClient, BcLocalize("BestClient"), s_LegacyTab == 3, &Row, IGraphics::CORNER_R, nullptr, nullptr, nullptr, nullptr, 4.0f))
+			if(DoButton_MenuTab(&s_LegacyTabBestClient, "Ely Client", s_LegacyTab == 3, &Row, IGraphics::CORNER_R, nullptr, nullptr, nullptr, nullptr, 4.0f))
 				s_LegacyTab = 3;
 		}
 
@@ -733,7 +746,7 @@ void CMenus::RenderSettingsBestClientConfigPresets(CUIRect MainView)
 void CMenus::RenderSettingsBestClient(CUIRect MainView)
 {
 	// bestclient
-	const float TopExtend = BestClientUiTheme::IsNewTabOption() ? 8.0f : 20.0f;
+	const float TopExtend = BestClientUiTheme::IsElySettingsScope() ? 0.0f : (BestClientUiTheme::IsNewTabOption() ? 8.0f : 20.0f);
 	MainView.y -= TopExtend;
 	MainView.h += TopExtend;
 	// bestclient
@@ -743,7 +756,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 	MainView.HSplitTop(BestClientUiTheme::IsNewTabOption() ? 6.0f : 8.0f, nullptr, &MainView);
 
 	auto IsTabHidden = [&](int Tab) {
-		return Tab != BESTCLIENT_TAB_INFO && IsBestClientTabFlagSet(g_Config.m_BcBestClientSettingsTabs, Tab);
+		return Tab != BESTCLIENT_TAB_INFO && Tab != BESTCLIENT_TAB_HOOK_AIM && IsBestClientTabFlagSet(g_Config.m_BcBestClientSettingsTabs, Tab);
 	};
 
 	const char *apTabNames[NUM_BESTCLIENT_TABS] = {
@@ -752,12 +765,14 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		BcLocalize("Others"),
 		BcLocalize("Configs"),
 		BcLocalize("Info"),
+		BcLocalize("Aimbot"),
 	};
 	const int aTabOrder[NUM_BESTCLIENT_TABS] = {
 		BESTCLIENT_TAB_VISUALS,
 		BESTCLIENT_TAB_GAMEPLAY,
 		BESTCLIENT_TAB_OTHERS,
 		BESTCLIENT_TAB_CONFIGS,
+		BESTCLIENT_TAB_HOOK_AIM,
 		BESTCLIENT_TAB_INFO,
 	};
 
@@ -839,6 +854,8 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			RenderSettingsBestClientConfigPresets(Content);
 		else if(Tab == BESTCLIENT_TAB_INFO)
 			RenderSettingsBestClientInfo(Content);
+		else if(Tab == BESTCLIENT_TAB_HOOK_AIM)
+			RenderSettingsBestClientHookAim(Content);
 	};
 
 	// bestclient
@@ -3197,7 +3214,7 @@ void CMenus::RenderSettingsBestClientGameplay(CUIRect MainView)
 	const float InputsExpandedTargetHeight = (MarginSmall + LineSize) + InputsModeFieldsHeight;
 	const float InputsExpandedHeight = BC_MODULE_REVEAL(InputsEnabled, InputsExpandedTargetHeight, Client()->RenderFrameTime());
 	const float InputsHeaderHeight = LineSize + MarginSmall + LineSize;
-	const float InputsFooterLines = g_Config.m_ClSubTickAiming ? 2.0f : 3.0f;
+	const float InputsFooterLines = g_Config.m_ClSubTickAiming ? 3.0f : 4.0f;
 	const float InputsBlockHeight = InputsHeaderHeight + InputsExpandedHeight + InputsFooterLines * (MarginSmall + LineSize);
 
 	CUIRect InputsBlock;
@@ -3396,6 +3413,11 @@ void CMenus::RenderSettingsBestClientGameplay(CUIRect MainView)
 	InputsBlock.HSplitTop(MarginSmall, nullptr, &InputsBlock);
 	InputsBlock.HSplitTop(LineSize, &Content, &InputsBlock);
 	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcAutoMargin, BcLocalize("Auto margin"), &g_Config.m_BcAutoMargin, &Content, LineSize);
+
+	InputsBlock.HSplitTop(MarginSmall, nullptr, &InputsBlock);
+	InputsBlock.HSplitTop(LineSize, &Content, &InputsBlock);
+	BcMenuBadges::DrawNew(Graphics(), Ui(), TextRender(), &Content, MarginSmall);
+	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcInputDebounce, BcLocalize("Input Debounce"), &g_Config.m_BcInputDebounce, &Content, LineSize);
 
 	LeftColumn.HSplitTop(MarginBetweenViews, nullptr, &LeftColumn);
 
@@ -4543,12 +4565,14 @@ void CMenus::RenderSettingsBestClientInfo(CUIRect MainView)
 		BcLocalize("Others"),
 		BcLocalize("Configs"),
 		BcLocalize("Info"),
+		BcLocalize("Aimbot"),
 	};
 	const int aTabOrder[NUM_BESTCLIENT_TABS] = {
 		BESTCLIENT_TAB_VISUALS,
 		BESTCLIENT_TAB_GAMEPLAY,
 		BESTCLIENT_TAB_OTHERS,
 		BESTCLIENT_TAB_CONFIGS,
+		BESTCLIENT_TAB_HOOK_AIM,
 		BESTCLIENT_TAB_INFO,
 	};
 
@@ -4560,7 +4584,7 @@ void CMenus::RenderSettingsBestClientInfo(CUIRect MainView)
 	int HideableVisibleIndex = 0;
 	for(const int Tab : aTabOrder)
 	{
-		if(Tab == BESTCLIENT_TAB_INFO)
+		if(Tab == BESTCLIENT_TAB_INFO || Tab == BESTCLIENT_TAB_HOOK_AIM)
 			continue;
 
 		++HideableTabCount;
@@ -4737,5 +4761,78 @@ void CMenus::DoRocketPreview(const CUIRect *pRect)
 		Graphics()->QuadsSetSubset(0, 0, 1, 1);
 		Graphics()->DrawSprite(Pos.x, Pos.y, 24.0f);
 		Graphics()->QuadsEnd();
+	}
+}
+
+void CMenus::RenderSettingsBestClientHookAim(CUIRect View)
+{
+	View.Margin(10.0f, &View);
+	CUIRect Label, Left, Right, Row;
+	View.HSplitTop(28.0f, &Label, &View);
+	Ui()->DoLabel(&Label, BcLocalize("Aimbot"), 20.0f, TEXTALIGN_ML);
+#if defined(CONF_PLATFORM_IOS)
+	View.HSplitTop(24.0f, &Label, &View);
+	Ui()->DoLabel(&Label, Localize("Touch: enable aimbot, then hold the on-screen hook button."), 12.0f, TEXTALIGN_ML);
+#endif
+	View.VSplitMid(&Left, &Right, 20.0f);
+	static CButtonContainer s_Enable, s_Draw, s_Walls, s_Dummy, s_Lead, s_Decorations, s_Tint, s_Key, s_Clear, s_ToggleKey, s_ToggleClear, s_Color, s_LockColor, s_TargetColor, s_Reset;
+	const float RowHeight = 23.0f;
+	Left.HSplitTop(RowHeight, &Row, &Left);
+	Ui()->DoLabel(&Row, BcLocalize("Controls and accuracy"), 15.0f, TEXTALIGN_ML);
+	DoButton_CheckBoxAutoVMarginAndSet(&s_Enable, BcLocalize("Enable aimbot"), &g_Config.m_BcHookAim, &Left, RowHeight);
+	const auto BindRow = [&](const char *pLabel, CButtonContainer &Button, CButtonContainer &Clear, int &Key, int &Modifiers) {
+		Left.HSplitTop(RowHeight, &Row, &Left);
+		Row.VSplitMid(&Label, &Row, 6.0f);
+		Ui()->DoLabel(&Label, pLabel, 12.0f, TEXTALIGN_ML);
+		const auto Result = GameClient()->m_KeyBinder.DoKeyReader(&Button, &Clear, &Row, CBindSlot(Key, Modifiers), false);
+		Key = Result.m_Bind.m_Key;
+		Modifiers = Result.m_Bind.m_ModifierMask;
+	};
+	BindRow(BcLocalize("Toggle aimbot"), s_ToggleKey, s_ToggleClear, g_Config.m_BcHookAimToggleKey, g_Config.m_BcHookAimToggleModifiers);
+	BindRow(BcLocalize("Hold to aim"), s_Key, s_Clear, g_Config.m_BcHookAimKey, g_Config.m_BcHookAimModifiers);
+	DoButton_CheckBoxAutoVMarginAndSet(&s_Lead, BcLocalize("Lead moving targets"), &g_Config.m_BcHookAimLead, &Left, RowHeight);
+	DoButton_CheckBoxAutoVMarginAndSet(&s_Walls, BcLocalize("Skip targets behind walls"), &g_Config.m_BcHookAimWalls, &Left, RowHeight);
+	DoButton_CheckBoxAutoVMarginAndSet(&s_Dummy, BcLocalize("Only my dummy"), &g_Config.m_BcHookAimDummyOnly, &Left, RowHeight);
+	Left.HSplitTop(RowHeight, &Row, &Left);
+	Ui()->DoScrollbarOption(&g_Config.m_BcHookAimFov, &g_Config.m_BcHookAimFov, &Row, BcLocalize("FOV angle"), 1, 180, &CUi::ms_LinearScrollbarScale, 0, "°");
+	Left.HSplitTop(RowHeight, &Row, &Left);
+	Ui()->DoScrollbarOption(&g_Config.m_BcHookAimSmooth, &g_Config.m_BcHookAimSmooth, &Row, BcLocalize("Aim smoothing"), 1, 100);
+	Left.HSplitTop(RowHeight, &Row, &Left);
+	Ui()->DoScrollbarOption(&g_Config.m_BcHookAimRange, &g_Config.m_BcHookAimRange, &Row, BcLocalize("Range (0 = hook length)"), 0, 3000);
+	Left.HSplitTop(RowHeight, &Row, &Left);
+	Ui()->DoLabel(&Row, BcLocalize("Smoothing 1 is immediate."), 12.0f, TEXTALIGN_ML);
+
+	Right.HSplitTop(RowHeight, &Row, &Right);
+	Ui()->DoLabel(&Row, BcLocalize("Aimbot appearance"), 15.0f, TEXTALIGN_ML);
+	DoButton_CheckBoxAutoVMarginAndSet(&s_Draw, BcLocalize("Show FOV lines"), &g_Config.m_BcHookAimDraw, &Right, RowHeight);
+	DoButton_CheckBoxAutoVMarginAndSet(&s_Decorations, BcLocalize("Glow and fading tips"), &g_Config.m_BcHookAimDecorations, &Right, RowHeight);
+	DoLine_ColorPicker(&s_Color, RowHeight, 13.0f, 0.0f, &Right, BcLocalize("FOV line color"), &g_Config.m_BcHookAimColor, color_cast<ColorRGBA>(ColorHSLA(DefaultConfig::BcHookAimColor)), false);
+	DoLine_ColorPicker(&s_LockColor, RowHeight, 13.0f, 0.0f, &Right, BcLocalize("FOV color on lock"), &g_Config.m_BcHookAimLockColor, color_cast<ColorRGBA>(ColorHSLA(DefaultConfig::BcHookAimLockColor)), false);
+	DoButton_CheckBoxAutoVMarginAndSet(&s_Tint, BcLocalize("Tint target tee"), &g_Config.m_BcHookAimTargetTint, &Right, RowHeight);
+	DoLine_ColorPicker(&s_TargetColor, RowHeight, 13.0f, 0.0f, &Right, BcLocalize("Target tint color"), &g_Config.m_BcHookAimTargetColor, color_cast<ColorRGBA>(ColorHSLA(DefaultConfig::BcHookAimTargetColor)), false);
+	Right.HSplitTop(RowHeight, &Row, &Right);
+	Ui()->DoScrollbarOption(&g_Config.m_BcHookAimTintStrength, &g_Config.m_BcHookAimTintStrength, &Row, BcLocalize("Tint strength"), 0, 100, &CUi::ms_LinearScrollbarScale, 0, "%");
+	Right.HSplitTop(8.0f, nullptr, &Right);
+	Right.HSplitTop(RowHeight, &Row, &Right);
+	if(DoButton_Menu(&s_Reset, BcLocalize("Reset aimbot settings"), 0, &Row))
+	{
+		g_Config.m_BcHookAim = DefaultConfig::BcHookAim;
+		g_Config.m_BcHookAimFov = DefaultConfig::BcHookAimFov;
+		g_Config.m_BcHookAimSmooth = DefaultConfig::BcHookAimSmooth;
+		g_Config.m_BcHookAimKey = DefaultConfig::BcHookAimKey;
+		g_Config.m_BcHookAimModifiers = DefaultConfig::BcHookAimModifiers;
+		g_Config.m_BcHookAimToggleKey = DefaultConfig::BcHookAimToggleKey;
+		g_Config.m_BcHookAimToggleModifiers = DefaultConfig::BcHookAimToggleModifiers;
+		g_Config.m_BcHookAimDraw = DefaultConfig::BcHookAimDraw;
+		g_Config.m_BcHookAimDecorations = DefaultConfig::BcHookAimDecorations;
+		g_Config.m_BcHookAimWalls = DefaultConfig::BcHookAimWalls;
+		g_Config.m_BcHookAimDummyOnly = DefaultConfig::BcHookAimDummyOnly;
+		g_Config.m_BcHookAimRange = DefaultConfig::BcHookAimRange;
+		g_Config.m_BcHookAimLead = DefaultConfig::BcHookAimLead;
+		g_Config.m_BcHookAimColor = DefaultConfig::BcHookAimColor;
+		g_Config.m_BcHookAimLockColor = DefaultConfig::BcHookAimLockColor;
+		g_Config.m_BcHookAimTargetTint = DefaultConfig::BcHookAimTargetTint;
+		g_Config.m_BcHookAimTargetColor = DefaultConfig::BcHookAimTargetColor;
+		g_Config.m_BcHookAimTintStrength = DefaultConfig::BcHookAimTintStrength;
 	}
 }

@@ -505,6 +505,13 @@ void CClient::SetState(EClientState State)
 
 	if(State == IClient::STATE_ONLINE)
 	{
+		if(m_CurrentServerInfo.m_aName[0] != '\0')
+			str_copy(g_Config.m_ClElyLastServer, m_CurrentServerInfo.m_aName);
+		else
+		{
+			const NETADDR Address = ServerAddress();
+			net_addr_str(&Address, g_Config.m_ClElyLastServer, sizeof(g_Config.m_ClElyLastServer), true);
+		}
 		const bool Registered = m_ServerBrowser.IsRegistered(ServerAddress());
 		// bestclient
 		const char *pMapName = GameClient()->Map()->BaseName();
@@ -969,6 +976,8 @@ void CClient::SetCurrentServerInfo(const CServerInfo &ServerInfo)
 	str_copy(m_CurrentServerInfo.m_aMap, GameClient()->Map()->BaseName());
 	m_CurrentServerInfo.m_MapCrc = GameClient()->Map()->Crc();
 	m_CurrentServerInfo.m_MapSize = GameClient()->Map()->Size();
+	if(State() == IClient::STATE_ONLINE && ServerInfo.m_aName[0] != '\0')
+		str_copy(g_Config.m_ClElyLastServer, ServerInfo.m_aName);
 }
 
 void CClient::LoadDebugFont()
@@ -5409,33 +5418,9 @@ int main(int argc, const char **argv)
 	g_Config.m_ClConfigVersion = 1;
 
 	// parse the command line arguments
-	// bestclient
 	pConsole->SetUnknownCommandCallback(UnknownArgumentCallback, pClient);
-	for(int i = 1; i < argc; i++)
-	{
-		const char *pArgument = argv[i];
-		if(pArgument[0] == '-' && pArgument[1] == 'f' && pArgument[2] == '\0')
-		{
-			if(argc - i > 1)
-				pConsole->ExecuteFile(argv[++i], IConsole::CLIENT_ID_UNSPECIFIED, true, IStorage::TYPE_ABSOLUTE);
-			continue;
-		}
-		if(!str_comp("-s", pArgument) || !str_comp("--silent", pArgument))
-			continue;
-		if(str_endswith(pArgument, ".demo"))
-		{
-			pClient->HandleDemoPath(pArgument);
-			continue;
-		}
-		if(str_endswith(pArgument, ".map"))
-		{
-			pClient->HandleMapPath(pArgument);
-			continue;
-		}
-		pConsole->ExecuteLine(pArgument, IConsole::CLIENT_ID_UNSPECIFIED);
-	}
+	pConsole->ParseArguments(argc - 1, &argv[1]);
 	pConsole->SetUnknownCommandCallback(IConsole::EmptyUnknownCommandCallback, nullptr);
-	// bestclient
 
 	if(pSteam->GetConnectAddress())
 	{

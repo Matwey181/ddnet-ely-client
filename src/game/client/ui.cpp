@@ -873,6 +873,20 @@ CLabelResult CUi::DoLabel(const CUIRect *pRect, const char *pText, float Size, i
 	Cursor.m_Flags |= Flags;
 	Cursor.m_vColorSplits = LabelProps.m_vColorSplits;
 	Cursor.m_LineWidth = (float)LabelProps.m_MaxWidth;
+	if(BestClientUiTheme::IsElySettingsScope())
+	{
+		const unsigned SavedFlags = TextRender()->GetRenderFlags();
+		TextRender()->SetRenderFlags(SavedFlags | TEXT_RENDER_FLAG_ONE_TIME_USE);
+		STextContainerIndex Container;
+		const bool Created = TextRender()->CreateTextContainer(Container, &Cursor, pText, -1);
+		TextRender()->SetRenderFlags(SavedFlags);
+		if(Created)
+		{
+			TextRender()->RenderTextContainer(Container, ColorRGBA(1, 1, 1, 1), ColorRGBA(0, 0, 0, 0));
+			TextRender()->DeleteTextContainer(Container);
+		}
+		return CLabelResult{.m_Truncated = Cursor.m_Truncated};
+	}
 	// bestclient
 	const ColorRGBA PrevTextColor = TextRender()->GetTextColor();
 	const bool UiTextGradient = BestClientUiTheme::IsCustomUiTextGradient() && Cursor.m_vColorSplits.empty();
@@ -1721,6 +1735,8 @@ bool CUi::DoScrollbarOption(const void *pId, int *pOption, const CUIRect *pRect,
 		else
 			str_copy(aValueBuf, "∞");
 		str_copy(aBuf, pStr);
+		if(BestClientUiTheme::IsElySettingsScope())
+			str_format(aBuf, sizeof(aBuf), "%s: %s", pStr, aValueBuf);
 	}
 	else if(!Infinite || Value != Max)
 		// bestclient

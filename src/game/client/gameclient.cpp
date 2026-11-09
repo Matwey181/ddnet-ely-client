@@ -278,6 +278,7 @@ void CGameClient::OnConsoleInit()
 						  &m_AdminPanel, // bestclient
 						  &m_Menus,
 						  &m_ClickGui, // consume clicks/keys when ClickGUI is open
+						  &m_MusicPlayer, // optional Ely island key, after modal input
 						  &m_Controls,
 						  &m_TouchControls,
 						  &m_Binds});
@@ -604,6 +605,10 @@ void CGameClient::OnUpdate()
 	Input()->ConsumeEvents([&](const IInput::CEvent &Event) {
 		OnInput(Event);
 	});
+
+	if(m_Controls.HookAimHeld())
+		UpdateRenderedCharacters();
+	m_Controls.UpdateHookAim();
 
 	if(g_Config.m_ClSubTickAiming && m_Binds.m_MouseOnAction)
 	{
@@ -993,6 +998,11 @@ void CGameClient::OnRender()
 	{
 		int64_t TimeStart = (g_Config.m_Debug || ProfileIos) ? time_get_nanoseconds().count() : 0;
 		// bestclient
+		if(pComponent == &m_Hud && g_Config.m_BcHookAim && g_Config.m_BcHookAimDraw)
+		{
+			m_AspectRatio.PrepareComponent(&m_Players);
+			m_Controls.RenderHookAim();
+		}
 		m_AspectRatio.PrepareComponent(pComponent);
 		// bestclient
 		pComponent->OnRender();

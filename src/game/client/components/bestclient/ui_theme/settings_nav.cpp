@@ -31,6 +31,7 @@ static constexpr int BC_TAB_GAMEPLAY = 1;
 static constexpr int BC_TAB_OTHERS = 2;
 static constexpr int BC_TAB_CONFIGS = 3;
 static constexpr int BC_TAB_INFO = 4;
+static constexpr int BC_TAB_HOOK_AIM = 5;
 
 static const int s_aDdnetLeaves[] = {
 	SETTINGS_NAV_LEAF_TOUCH,
@@ -59,6 +60,7 @@ static const int s_aBestclientLeaves[] = {
 	SETTINGS_NAV_LEAF_BC_GAMEPLAY,
 	SETTINGS_NAV_LEAF_BC_OTHERS,
 	SETTINGS_NAV_LEAF_BC_CONFIGS,
+	SETTINGS_NAV_LEAF_BC_HOOK_AIM,
 	SETTINGS_NAV_LEAF_BC_INFO,
 };
 
@@ -168,6 +170,10 @@ SSettingsLeafTarget LeafTarget(int Leaf)
 		Target.m_SettingsPage = CMenus::SETTINGS_BESTCLIENT;
 		Target.m_BestClientTab = BC_TAB_CONFIGS;
 		break;
+	case SETTINGS_NAV_LEAF_BC_HOOK_AIM:
+		Target.m_SettingsPage = CMenus::SETTINGS_BESTCLIENT;
+		Target.m_BestClientTab = BC_TAB_HOOK_AIM;
+		break;
 	case SETTINGS_NAV_LEAF_BC_INFO:
 		Target.m_SettingsPage = CMenus::SETTINGS_BESTCLIENT;
 		Target.m_BestClientTab = BC_TAB_INFO;
@@ -183,7 +189,7 @@ int GroupForLeaf(int Leaf)
 {
 	if(Leaf >= SETTINGS_NAV_LEAF_TC_SETTINGS && Leaf <= SETTINGS_NAV_LEAF_TC_CONFIGS)
 		return SETTINGS_NAV_GROUP_TCLIENT;
-	if(Leaf >= SETTINGS_NAV_LEAF_BC_VISUALS && Leaf <= SETTINGS_NAV_LEAF_BC_INFO)
+	if(Leaf >= SETTINGS_NAV_LEAF_BC_VISUALS && Leaf <= SETTINGS_NAV_LEAF_BC_HOOK_AIM)
 		return SETTINGS_NAV_GROUP_BESTCLIENT;
 	return SETTINGS_NAV_GROUP_DDNET;
 }
@@ -238,6 +244,7 @@ int LeafFromState(int SettingsPage, int TClientTab, int BestClientTab)
 		case BC_TAB_OTHERS: return SETTINGS_NAV_LEAF_BC_OTHERS;
 		case BC_TAB_CONFIGS: return SETTINGS_NAV_LEAF_BC_CONFIGS;
 		case BC_TAB_INFO: return SETTINGS_NAV_LEAF_BC_INFO;
+		case BC_TAB_HOOK_AIM: return SETTINGS_NAV_LEAF_BC_HOOK_AIM;
 		default: return SETTINGS_NAV_LEAF_BC_VISUALS;
 		}
 	default:
@@ -382,7 +389,7 @@ void CMenus::RenderSettingsNavNewStyle(CUIRect &TabBar)
 	const char *apGroupNames[SETTINGS_NAV_GROUP_COUNT] = {
 		Localize("DDNet"),
 		TCLocalize("TClient"),
-		Localize("BestClient"),
+		"Ely Client",
 	};
 
 	auto LeafName = [&](int Leaf) -> const char * {
@@ -411,6 +418,7 @@ void CMenus::RenderSettingsNavNewStyle(CUIRect &TabBar)
 		case SETTINGS_NAV_LEAF_BC_OTHERS: return BcLocalize("Others");
 		case SETTINGS_NAV_LEAF_BC_CONFIGS: return BcLocalize("Configs");
 		case SETTINGS_NAV_LEAF_BC_INFO: return BcLocalize("Info");
+		case SETTINGS_NAV_LEAF_BC_HOOK_AIM: return BcLocalize("Aimbot");
 		default: return "";
 		}
 	};

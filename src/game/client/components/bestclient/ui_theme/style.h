@@ -19,6 +19,25 @@
 namespace BestClientUiTheme
 {
 
+inline bool &ElySettingsScopeRef()
+{
+	static bool s_Active = false;
+	return s_Active;
+}
+
+inline bool IsElySettingsScope() { return ElySettingsScopeRef(); }
+
+struct CElySettingsScope
+{
+	bool m_Previous;
+	explicit CElySettingsScope()
+	{
+		m_Previous = ElySettingsScopeRef();
+		ElySettingsScopeRef() = true;
+	}
+	~CElySettingsScope() { ElySettingsScopeRef() = m_Previous; }
+};
+
 enum
 {
 	UI_THEME_ELEM_TEXT = 0,
@@ -74,12 +93,12 @@ inline bool IsNewCheckbox()
 
 inline bool IsNewScrollbar()
 {
-	return IsNewStyle() && g_Config.m_BcMenuUiNewScrollbar != 0;
+	return IsElySettingsScope() || (IsNewStyle() && g_Config.m_BcMenuUiNewScrollbar != 0);
 }
 
 inline bool IsNewTabOption()
 {
-	return IsNewStyle() && g_Config.m_BcMenuUiNewTabOption != 0;
+	return !IsElySettingsScope() && IsNewStyle() && g_Config.m_BcMenuUiNewTabOption != 0;
 }
 
 inline bool IsSettingsNavOnLeft()
@@ -94,7 +113,7 @@ inline bool IsNewColorPicker()
 
 inline bool IsUiThemes()
 {
-	return g_Config.m_BcUiThemes != 0 && IsMenuThemeScope();
+	return !IsElySettingsScope() && g_Config.m_BcUiThemes != 0 && IsMenuThemeScope();
 }
 
 inline bool IsCustomUiColor()
@@ -363,6 +382,15 @@ inline ColorRGBA UiButton(ColorRGBA Color, bool AccentState = false)
 
 inline void DrawUiButton(const CUIRect *pRect, ColorRGBA Color, bool AccentState, int Corners, float Rounding)
 {
+	if(IsElySettingsScope())
+	{
+		pRect->Draw(ColorRGBA(0.26f, 0.26f, 0.29f, 0.85f), IGraphics::CORNER_ALL, std::max(4.0f, Rounding));
+		CUIRect Inner = *pRect;
+		Inner.Margin(0.6f, &Inner);
+		const float Value = AccentState ? 0.20f : 0.10f;
+		Inner.Draw(ColorRGBA(Value, Value, Value + 0.013f, 1), IGraphics::CORNER_ALL, std::max(3.5f, Rounding - 0.6f));
+		return;
+	}
 	DrawChromeRect(pRect, Color, ButtonColor(), ButtonGradColor(), ButtonGrad(), ButtonAccentColor(), AccentState, ButtonAccent(), IsCustomUiButton(), Corners, Rounding, ButtonAnimateSpeed());
 }
 
@@ -378,6 +406,11 @@ inline ColorRGBA UiDropdown(ColorRGBA Color, bool AccentState = false)
 
 inline void DrawUiDropdown(const CUIRect *pRect, ColorRGBA Color, bool AccentState, int Corners, float Rounding)
 {
+	if(IsElySettingsScope())
+	{
+		DrawUiButton(pRect, Color, AccentState, Corners, Rounding);
+		return;
+	}
 	DrawChromeRect(pRect, Color, DropdownColor(), DropdownGradColor(), DropdownGrad(), DropdownAccentColor(), AccentState, DropdownAccent(), IsCustomUiDropdown(), Corners, Rounding, DropdownAnimateSpeed());
 }
 
@@ -402,6 +435,11 @@ inline ColorRGBA UiBlockColor()
 
 inline void DrawUiBlock(const CUIRect *pRect, int Corners = IGraphics::CORNER_ALL, float Rounding = 10.0f)
 {
+	if(IsElySettingsScope())
+	{
+		pRect->Draw(ColorRGBA(0.08f, 0.08f, 0.09f, 0.86f), Corners, Rounding);
+		return;
+	}
 	const float Alpha = ThemeBlockOpacity() / 100.0f;
 	if(IsCustomUiBlock() && BlockGrad() && !BlockAccent())
 	{
@@ -469,6 +507,11 @@ inline ColorRGBA UiNavTab(ColorRGBA Base, bool AccentState = false)
 
 inline void DrawUiNavTab(const CUIRect *pRect, ColorRGBA Base, bool AccentState, int Corners, float Rounding)
 {
+	if(IsElySettingsScope())
+	{
+		pRect->Draw(ColorRGBA(AccentState ? 0.21f : 0.07f, AccentState ? 0.21f : 0.07f, AccentState ? 0.235f : 0.085f, 0.96f), IGraphics::CORNER_ALL, 5.0f);
+		return;
+	}
 	if(IsCustomUiNavTab() && AccentState && NavAccent())
 	{
 		pRect->Draw(UiNavTab(Base, true), Corners, Rounding);

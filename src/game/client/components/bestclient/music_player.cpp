@@ -6,17 +6,21 @@
 #include "music_player.h"
 
 #include "music_player_lyrics.h"
+#include "ely_audio.h"
 #include "visualizer/analyzer.h"
 #include "visualizer/service.h"
 #include "visualizer/source_priority.h"
 
 #include <base/color.h>
 #include <base/dbg.h>
+#include <base/log.h>
 #include <base/math.h>
 #include <base/str.h>
 #include <base/time.h>
 
 #include <engine/engine.h>
+#include <engine/console.h>
+#include <engine/keys.h>
 #include <engine/external/readerwriterqueue/ReaderWriterQueue.h>
 #include <engine/font_icons.h>
 #include <engine/graphics.h>
@@ -104,17 +108,21 @@ namespace
 		return UiRect;
 	}
 
+	std::atomic<bool> gs_ElyMediaDebug{false};
 	static bool MusicPlayerDebugEnabled(int Level)
 	{
-		(void)Level;
-		return false;
+		return Level <= 1 && gs_ElyMediaDebug.load(std::memory_order_relaxed);
 	}
 
 	static void MusicPlayerDebugLog(int Level, const char *pSubsystem, const char *pFmt, ...)
 	{
-		(void)Level;
-		(void)pSubsystem;
-		(void)pFmt;
+		if(!MusicPlayerDebugEnabled(Level)) return;
+		char aText[1024];
+		va_list Args;
+		va_start(Args, pFmt);
+		vsnprintf(aText, sizeof(aText), pFmt, Args);
+		va_end(Args);
+		log_info(pSubsystem, "%s", aText);
 	}
 
 	enum class EMusicPlaybackState
@@ -161,6 +169,8 @@ namespace
 		return aBuf;
 	}
 
+	std::mutex gs_ElySourceMutex;
+	std::string gs_ElyRequestedSource;
 	struct SNowPlayingSnapshot
 	{
 		bool m_Valid = false;
@@ -323,7 +333,7 @@ namespace
 	static std::string TrimCopy(std::string Value)
 	{
 		auto IsSpace = [](unsigned char c) {
-			return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v';
+			return c == ' ' || c == '	' || c == '\n' || c == '\r' || c == '\f' || c == '\v';
 		};
 
 		while(!Value.empty() && IsSpace((unsigned char)Value.front()))
@@ -892,6 +902,8 @@ namespace
 	class CWindowsNowPlayingProvider final : public IMusicPlaybackProvider
 	{
 		std::thread m_WorkerThread;
+		std::thread m_ControlThread;
+		std::string m_ControlSessionId;
 		std::mutex m_Mutex;
 		std::condition_variable m_Cv;
 		bool m_Shutdown = false;
@@ -952,6 +964,11 @@ namespace
 			try
 			{
 				return WmControl::GlobalSystemMediaTransportControlsSessionManager::RequestAsync().get();
+			}
+			catch(const winrt::hresult_error &Error)
+			{
+				MusicPlayerDebugLog(1, "ely-media", "RequestManager failure HRESULT=%08x", (unsigned)Error.code().value);
+				return nullptr;
 			}
 			catch(...)
 			{
@@ -1090,7 +1107,8 @@ namespace
 				return;
 			try
 			{
-				auto Session = FindTrackedSession(Manager, CurrentSessionId).value_or(Manager.GetCurrentSession());
+				auto Session = FindTrackedSession(Manager, CurrentSessionId).value_or(nullptr);
+				if(!Session && CurrentSessionId.empty()) Session = Manager.GetCurrentSession();
 				if(Session)
 					Action(Session);
 			}
@@ -1101,6 +1119,8 @@ namespace
 
 		bool PollSessions(WmControl::GlobalSystemMediaTransportControlsSessionManager &Manager, std::string &CurrentSessionId, SNowPlayingSnapshot &Out)
 		{
+			std::string RequestedSource;
+			{ std::lock_guard<std::mutex> Lock(gs_ElySourceMutex); RequestedSource = gs_ElyRequestedSource; }
 			Out = SNowPlayingSnapshot();
 			if(!Manager)
 				return false;
@@ -1119,12 +1139,20 @@ namespace
 			{
 				auto Sessions = Manager.GetSessions();
 				const uint32_t Count = Sessions.Size();
+				static int s_Polls = 0;
+				const bool Trace = (++s_Polls % 20) == 1;
+				if(Trace) MusicPlayerDebugLog(1, "ely-media", "sessions=%u requested=%s current=%s", Count, RequestedSource.c_str(), SystemCurrentSessionId.c_str());
 				for(uint32_t i = 0; i < Count; ++i)
 				{
 					auto Session = Sessions.GetAt(i);
+					if(!RequestedSource.empty() && SessionId(Session) != RequestedSource) continue;
 					SNowPlayingSnapshot Candidate;
 					if(!QuerySession(Session, Candidate))
+					{
+						if(Trace) MusicPlayerDebugLog(1, "ely-media", "session unavailable app=%s", SessionId(Session).c_str());
 						continue;
+					}
+					if(Trace) MusicPlayerDebugLog(1, "ely-media", "candidate app=%s state=%s title=%s", Candidate.m_ServiceId.c_str(), MusicPlaybackStateName(Candidate.m_PlaybackState), Candidate.m_Title.c_str());
 
 					const int Score = SessionScore(Candidate, CurrentSessionId, SystemCurrentSessionId);
 					if(Score > BestScore)
@@ -1156,6 +1184,62 @@ namespace
 			m_LatestSnapshot = HasSnapshot ? Snapshot : SNowPlayingSnapshot();
 		}
 
+		void ControlMain()
+		{
+			try { winrt::init_apartment(winrt::apartment_type::multi_threaded); }
+			catch(...) { return; }
+			auto Manager = RequestManager();
+			int64_t NextPlaybackPoll = 0;
+			for(;;)
+			{
+				bool Prev, PlayPause, Next;
+				std::string Session;
+				SNowPlayingSnapshot Fast;
+				{
+					std::unique_lock<std::mutex> Lock(m_Mutex);
+					m_Cv.wait_for(Lock, std::chrono::milliseconds(25), [this] { return m_Shutdown || m_RequestPrev || m_RequestPlayPause || m_RequestNext; });
+					if(m_Shutdown) break;
+					Prev = std::exchange(m_RequestPrev, false);
+					PlayPause = std::exchange(m_RequestPlayPause, false);
+					Next = std::exchange(m_RequestNext, false);
+					Session = m_ControlSessionId;
+					Fast.m_Valid = m_LatestSnapshot.m_Valid;
+					Fast.m_ServiceId = m_LatestSnapshot.m_ServiceId;
+				}
+				if(Fast.m_Valid && !Session.empty() && time_get() >= NextPlaybackPoll)
+				{
+					NextPlaybackPoll = time_get() + time_freq() / 10;
+					WithSession(Manager, Session, [&](auto &&Target) {
+						Fast.m_PlaybackState = TranslatePlaybackState(Target.GetPlaybackInfo().PlaybackStatus());
+						auto Timeline = Target.GetTimelineProperties();
+						Fast.m_PositionMs = ToMilliseconds(Timeline.Position());
+						Fast.m_DurationMs = std::max<int64_t>(0, ToMilliseconds(Timeline.EndTime()) - ToMilliseconds(Timeline.StartTime()));
+						std::lock_guard<std::mutex> Lock(m_Mutex);
+						if(m_LatestSnapshot.m_ServiceId == Fast.m_ServiceId)
+						{
+							m_LatestSnapshot.m_PlaybackState = Fast.m_PlaybackState;
+							m_LatestSnapshot.m_PositionMs = Fast.m_PositionMs;
+							m_LatestSnapshot.m_DurationMs = Fast.m_DurationMs;
+							m_HasSnapshot = Fast.m_PlaybackState != EMusicPlaybackState::STOPPED;
+						}
+					});
+				}
+				if(!Prev && !PlayPause && !Next) continue;
+				if(!Manager) Manager = RequestManager();
+				WithSession(Manager, Session, [&](auto &&Target) {
+					// Dispatch immediately on this dedicated apartment; artwork polling never holds it up.
+					auto Info = Target.GetPlaybackInfo();
+					const bool IsPlaying = TranslatePlaybackState(Info.PlaybackStatus()) == EMusicPlaybackState::PLAYING;
+					auto Controls = Info.Controls();
+					auto Request = PlayPause ? (IsPlaying && Controls.IsPauseEnabled() ? Target.TryPauseAsync() : (!IsPlaying && Controls.IsPlayEnabled() ? Target.TryPlayAsync() : Target.TryTogglePlayPauseAsync())) : (Prev ? Target.TrySkipPreviousAsync() : Target.TrySkipNextAsync());
+					const auto Status = Request.wait_for(std::chrono::milliseconds(500));
+					const bool Completed = Status == winrt::Windows::Foundation::AsyncStatus::Completed;
+					MusicPlayerDebugLog(1, "ely-media", "urgent media command app=%s completed=%d accepted=%d", Session.c_str(), Completed, Completed && Request.GetResults());
+				});
+			}
+			winrt::uninit_apartment();
+		}
+
 		void WorkerMain()
 		{
 			try
@@ -1176,58 +1260,27 @@ namespace
 			while(true)
 			{
 				bool PollRequested = false;
-				bool RequestPrev = false;
-				bool RequestPlayPause = false;
-				bool RequestNext = false;
 				{
 					std::unique_lock<std::mutex> Lock(m_Mutex);
 					m_Cv.wait_for(Lock, std::chrono::milliseconds(100), [this]() {
-						return m_Shutdown || m_PollRequested || m_RequestPrev || m_RequestPlayPause || m_RequestNext;
+						return m_Shutdown || m_PollRequested;
 					});
 					if(m_Shutdown)
 						break;
 
 					PollRequested = m_PollRequested;
-					RequestPrev = m_RequestPrev;
-					RequestPlayPause = m_RequestPlayPause;
-					RequestNext = m_RequestNext;
 					m_PollRequested = false;
-					m_RequestPrev = false;
-					m_RequestPlayPause = false;
-					m_RequestNext = false;
 				}
 
 				if(!Manager)
 					Manager = RequestManager();
 
-				if(Manager && RequestPrev)
-					WithSession(Manager, CurrentSessionId, [&](auto &&Session) {
-						const std::string SessionIdValue = SessionId(Session);
-						if(ShouldForceOrderedNavigation(LastSnapshot) && OrderedShuffleSessionId != SessionIdValue)
-						{
-							DisableShuffleForOrderedNavigation(Session, LastSnapshot);
-							OrderedShuffleSessionId = SessionIdValue;
-						}
-						Session.TrySkipPreviousAsync().get();
-					});
-				if(Manager && RequestPlayPause)
-					WithSession(Manager, CurrentSessionId, [](auto &&Session) { Session.TryTogglePlayPauseAsync().get(); });
-				if(Manager && RequestNext)
-					WithSession(Manager, CurrentSessionId, [&](auto &&Session) {
-						const std::string SessionIdValue = SessionId(Session);
-						if(ShouldForceOrderedNavigation(LastSnapshot) && OrderedShuffleSessionId != SessionIdValue)
-						{
-							DisableShuffleForOrderedNavigation(Session, LastSnapshot);
-							OrderedShuffleSessionId = SessionIdValue;
-						}
-						Session.TrySkipNextAsync().get();
-					});
-
-				if(PollRequested || RequestPrev || RequestPlayPause || RequestNext)
+				if(PollRequested)
 				{
 					SNowPlayingSnapshot Snapshot;
 					const bool HasSnapshot = PollSessions(Manager, CurrentSessionId, Snapshot);
 					LastSnapshot = HasSnapshot ? Snapshot : SNowPlayingSnapshot();
+					{ std::lock_guard<std::mutex> Lock(m_Mutex); m_ControlSessionId = CurrentSessionId; }
 					if(!HasSnapshot || !ShouldForceOrderedNavigation(LastSnapshot))
 						OrderedShuffleSessionId.clear();
 					StoreSnapshot(Snapshot, HasSnapshot);
@@ -1244,13 +1297,14 @@ namespace
 				Flag = true;
 				m_PollRequested = true;
 			}
-			m_Cv.notify_one();
+			m_Cv.notify_all();
 		}
 
 	public:
 		CWindowsNowPlayingProvider()
 		{
 			m_WorkerThread = std::thread([this]() { WorkerMain(); });
+			m_ControlThread = std::thread([this]() { ControlMain(); });
 		}
 
 		~CWindowsNowPlayingProvider() override
@@ -1259,9 +1313,10 @@ namespace
 				std::lock_guard<std::mutex> Lock(m_Mutex);
 				m_Shutdown = true;
 			}
-			m_Cv.notify_one();
+			m_Cv.notify_all();
 			if(m_WorkerThread.joinable())
 				m_WorkerThread.join();
+			if(m_ControlThread.joinable()) m_ControlThread.join();
 		}
 
 		bool Poll(SNowPlayingSnapshot &Out) override
@@ -1273,7 +1328,7 @@ namespace
 					Out = m_HasSnapshot ? m_LatestSnapshot : SNowPlayingSnapshot();
 					m_PollRequested = true;
 				}
-				m_Cv.notify_one();
+				m_Cv.notify_all();
 				return Out.m_Valid;
 			}
 			catch(...)
@@ -2482,7 +2537,7 @@ namespace
 		return Profile;
 	}
 
-	static void DrawRoundedTexture(IGraphics *pGraphics, IGraphics::CTextureHandle Texture, const CUIRect &Rect, float Rounding, int TextureWidth, int TextureHeight, const SArtCropProfile &CropProfile)
+	static void DrawRoundedTexture(IGraphics *pGraphics, IGraphics::CTextureHandle Texture, const CUIRect &Rect, float Rounding, int TextureWidth, int TextureHeight, const SArtCropProfile &CropProfile, float Alpha = 1.0f)
 	{
 		if(pGraphics == nullptr || !Texture.IsValid() || Rect.w <= 0.0f || Rect.h <= 0.0f)
 			return;
@@ -2521,7 +2576,7 @@ namespace
 
 		pGraphics->TextureSet(Texture);
 		pGraphics->QuadsBegin();
-		pGraphics->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
+		pGraphics->SetColor(1.0f, 1.0f, 1.0f, Alpha);
 		for(int i = 0; i < NumSlices; ++i)
 		{
 			const float SliceT0 = i / (float)NumSlices;
@@ -2959,6 +3014,7 @@ private:
 	void ThreadMain()
 	{
 		std::unique_ptr<IMusicPlaybackProvider> pProvider;
+		MusicPlayerDebugLog(1, "ely-media", "provider thread started, compiled Windows WinRT=%d", BC_MUSICPLAYER_HAS_WINRT);
 #if defined(CONF_PLATFORM_LINUX)
 #if BC_MUSICPLAYER_HAS_DBUS
 		pProvider = std::make_unique<CLinuxNowPlayingProvider>();
@@ -3028,6 +3084,24 @@ private:
 	SNowPlayingSnapshot m_LatestSnapshot;
 };
 
+class CElyLocalLyricsJob : public IJob
+{
+	IStorage *m_pStorage;
+	std::string m_Path;
+	void Run() override
+	{
+		void *pData = nullptr; unsigned Size = 0;
+		if(m_pStorage->ReadFile(m_Path.c_str(), IStorage::TYPE_ALL_OR_ABSOLUTE, &pData, &Size))
+		{
+			if(Size <= 1024 * 1024) m_Text.assign(static_cast<char *>(pData), Size);
+			free(pData);
+		}
+	}
+public:
+	std::string m_Text;
+	CElyLocalLyricsJob(IStorage *pStorage, const char *pPath) : m_pStorage(pStorage), m_Path(pPath) {}
+};
+
 class CMusicPlayer::CImpl
 {
 public:
@@ -3037,6 +3111,40 @@ public:
 	std::unique_ptr<BestClientVisualizer::CRealtimeMusicVisualizer> m_pVisualizer;
 	std::unique_ptr<CVisualizerLevelThread> m_pLevelThread;
 	SNowPlayingSnapshot m_Snapshot;
+	SNowPlayingSnapshot m_ElyLastSnapshot;
+	bool m_ElyPendingToggle = false, m_ElyPendingPlaying = false;
+	int64_t m_ElyPendingTick = 0, m_ElyPendingPosition = 0;
+	std::string m_ElyPendingTrack, m_ElyMarqueeTrack;
+	float m_ElyMarqueeTime = 0;
+
+	bool EffectivePlaying() const
+	{
+		if(m_ElyPendingToggle && time_get() - m_ElyPendingTick < time_freq() * 3 / 2 && m_ElyPendingTrack == BuildSnapshotTrackKey(m_Snapshot)) return m_ElyPendingPlaying;
+		return m_Snapshot.m_Valid && m_Snapshot.m_PlaybackState == EMusicPlaybackState::PLAYING;
+	}
+	void ResolvePendingToggle()
+	{
+		if(!m_ElyPendingToggle) return;
+		const bool Confirmed = m_Snapshot.m_Valid && (m_Snapshot.m_PlaybackState == EMusicPlaybackState::PLAYING) == m_ElyPendingPlaying;
+		const bool Expired = time_get() - m_ElyPendingTick >= time_freq() * 3 / 2;
+		if(Confirmed || Expired || m_ElyPendingTrack != BuildSnapshotTrackKey(m_Snapshot))
+		{
+			MusicPlayerDebugLog(1, "ely-island", "play/pause confirmation=%d rollback=%d", Confirmed, Expired && !Confirmed);
+			m_ElyPendingToggle = false;
+		}
+	}
+	void RequestElyPlayPause()
+	{
+		ResolvePendingToggle();
+		if(m_ElyPendingToggle || !m_pProviderThread || !m_Snapshot.m_CanPlayPause) return;
+		m_ElyPendingPosition = DisplayPositionMs();
+		m_ElyPendingPlaying = !EffectivePlaying();
+		m_ElyPendingTick = time_get();
+		m_ElyPendingTrack = BuildSnapshotTrackKey(m_Snapshot);
+		m_ElyPendingToggle = true;
+		m_pProviderThread->SendCommand(EProviderCommand::PLAY_PAUSE);
+		MusicPlayerDebugLog(1, "ely-island", "play/pause requested, immediate playing=%d", m_ElyPendingPlaying);
+	}
 	BestClientVisualizer::SVisualizerFrame m_VisualizerData;
 	int64_t m_LastSnapshotTick = 0;
 	int64_t m_LastPollTick = 0;
@@ -3086,6 +3194,8 @@ public:
 	std::string m_DebugLastRenderPath;
 	int64_t m_DebugNextRenderVerboseTick = 0;
 	CMusicPlayerLyrics m_Lyrics;
+	std::shared_ptr<CElyLocalLyricsJob> m_pLocalLyrics;
+	std::string m_LocalLyricsPath;
 	IGraphics::CTextureHandle m_LogoTexture;
 	bool m_LogoLoadAttempted = false;
 	float m_LastResolvedHudWidth = 0.0f;
@@ -3106,6 +3216,7 @@ public:
 	{
 		if(!m_pProviderThread)
 			m_pProviderThread = std::make_unique<CNowPlayingProviderThread>();
+		if(g_Config.m_ElyIslandEnabled) return;
 		if(!m_pVisualizer)
 			m_pVisualizer = std::make_unique<BestClientVisualizer::CRealtimeMusicVisualizer>();
 		if(!m_pLevelThread)
@@ -3137,6 +3248,7 @@ public:
 		m_ExpandAnim = 0.0f;
 		m_HoverAnim = 0.0f;
 		m_VisualPositionMs = 0.0f;
+		m_ElyPendingToggle = false; m_ElyMarqueeTrack.clear(); m_ElyMarqueeTime = 0;
 		m_VisualTrackKey.clear();
 		if(m_pLevelThread)
 			m_pLevelThread->Reset();
@@ -3611,6 +3723,11 @@ public:
 
 	int64_t DisplayPositionMs() const
 	{
+		if(m_ElyPendingToggle && time_get() - m_ElyPendingTick < time_freq() * 3 / 2 && m_ElyPendingTrack == BuildSnapshotTrackKey(m_Snapshot))
+		{
+			const int64_t Position = m_ElyPendingPosition + (m_ElyPendingPlaying ? (time_get() - m_ElyPendingTick) * 1000 / time_freq() : 0);
+			return m_Snapshot.m_DurationMs > 0 ? std::min(Position, m_Snapshot.m_DurationMs) : Position;
+		}
 		int64_t Position = std::max<int64_t>(0, m_PlaybackAnchorPositionMs);
 		if(m_PlaybackAnchorState == EMusicPlaybackState::PLAYING && m_PlaybackAnchorTick > 0)
 			Position += ((time_get() - m_PlaybackAnchorTick) * 1000) / time_freq();
@@ -3790,6 +3907,13 @@ public:
 
 	void UpdateHudReservation(CMusicPlayer *pOwner)
 	{
+		if(g_Config.m_ElyIslandEnabled) { m_HudReservation = {}; return; }
+
+		if(!m_Snapshot.m_Valid)
+		{
+			m_HudReservation = CMusicPlayer::SHudReservation();
+			return;
+		}
 		if(!HudLayout::IsEnabled(HudLayout::MODULE_MUSIC_PLAYER) || g_Config.m_BcMusicPlayer == 0 || (g_Config.m_ClFocusMode && g_Config.m_ClFocusModeHideSongPlayer))
 		{
 			ResetHudState();
@@ -3798,8 +3922,10 @@ public:
 
 		const float Height = HudLayout::CANVAS_HEIGHT;
 		const float Width = Height * pOwner->Graphics()->ScreenAspect();
-		const auto Layout = HudLayout::Get(HudLayout::MODULE_MUSIC_PLAYER, Width, Height);
-		const SGameTimerDisplay GameTimer = BuildGameTimerDisplay(pOwner->GameClient()->m_Snap.m_pGameInfoObj, pOwner->Client()->GameTick(g_Config.m_ClDummy), pOwner->Client()->GameTickSpeed(), false);
+		auto Layout = HudLayout::Get(HudLayout::MODULE_MUSIC_PLAYER, Width, Height);
+		if(!HudLayout::HasPositionOverride(HudLayout::MODULE_MUSIC_PLAYER) && g_Config.m_ClShowhud)
+			Layout.m_Y += 25.0f;
+		const SGameTimerDisplay GameTimer{};
 		const float TextScale = MusicPlayerTextScale();
 		const float CompactScale = std::clamp(Layout.m_Scale / 100.0f, 0.25f, 3.0f);
 		const float CompactWidthScale = Width / std::max(HudLayout::CANVAS_WIDTH, 0.001f);
@@ -3934,6 +4060,7 @@ void CMusicPlayer::EnsureImpl()
 
 void CMusicPlayer::OnReset()
 {
+	m_ElyExpanded = false; m_ElyLastPlaying = 0;
 	InvalidateMusicPlayerTextWidthCache();
 	EnsureImpl();
 	m_pImpl->Reset(Graphics());
@@ -3941,6 +4068,7 @@ void CMusicPlayer::OnReset()
 
 void CMusicPlayer::OnShutdown()
 {
+	ElyAudio::Shutdown();
 	if(m_pImpl)
 	{
 		m_pImpl->Shutdown(Graphics());
@@ -4057,8 +4185,13 @@ void CMusicPlayer::RenderHudEditor(bool ForcePreview)
 
 void CMusicPlayer::OnUpdate()
 {
+	gs_ElyMediaDebug.store(g_Config.m_Debug != 0, std::memory_order_relaxed);
 	EnsureImpl();
-	if(g_Config.m_BcMusicPlayer == 0)
+	{ std::lock_guard<std::mutex> Lock(gs_ElySourceMutex); gs_ElyRequestedSource = g_Config.m_ElyMusicSource; }
+	m_pImpl->ResolvePendingToggle();
+	const bool Playing = m_pImpl->EffectivePlaying();
+	ElyAudio::Update((g_Config.m_ElyMusicEnabled && g_Config.m_ElyMusicEqualizer) || g_Config.m_ElyFlashEnabled, Playing, ElyAudio::ConfiguredSettings());
+	if(g_Config.m_BcMusicPlayer == 0 && !g_Config.m_ElyMusicEnabled && !g_Config.m_ElyFlashEnabled)
 	{
 		if(m_pImpl->m_pProviderThread || m_pImpl->m_pVisualizer || m_pImpl->m_pLevelThread || m_pImpl->m_Snapshot.m_Valid)
 		{
@@ -4143,9 +4276,24 @@ void CMusicPlayer::OnUpdate()
 		}
 	}
 
+	m_pImpl->ResolvePendingToggle();
+	const std::string MarqueeTrack = BuildSnapshotTrackKey(m_pImpl->m_Snapshot);
+	if(MarqueeTrack != m_pImpl->m_ElyMarqueeTrack) { m_pImpl->m_ElyMarqueeTrack = MarqueeTrack; m_pImpl->m_ElyMarqueeTime = 0; }
+	if(m_pImpl->EffectivePlaying()) m_pImpl->m_ElyMarqueeTime += std::clamp(Client()->RenderFrameTime(), 0.0f, .1f);
 	m_pImpl->UpdateArtwork(this);
 	const bool LyricsAllowed = Client()->State() == IClient::STATE_ONLINE || Client()->State() == IClient::STATE_DEMOPLAYBACK;
-	if(LyricsAllowed && g_Config.m_BcMusicPlayerShowLyrics != 0 && m_pImpl->m_Snapshot.m_Valid)
+	if(LyricsAllowed && g_Config.m_ElyLyricsEnabled && g_Config.m_ElyLyricsFile[0] && m_pImpl->m_Snapshot.m_Valid)
+	{
+		if(!m_pImpl->m_pLocalLyrics || m_pImpl->m_LocalLyricsPath != g_Config.m_ElyLyricsFile)
+		{
+			m_pImpl->m_LocalLyricsPath = g_Config.m_ElyLyricsFile;
+			m_pImpl->m_pLocalLyrics = std::make_shared<CElyLocalLyricsJob>(Storage(), g_Config.m_ElyLyricsFile);
+			Engine()->AddJob(m_pImpl->m_pLocalLyrics);
+		}
+		if(m_pImpl->m_pLocalLyrics->Done())
+			m_pImpl->m_Lyrics.UpdateLocal(m_pImpl->m_pLocalLyrics->m_Text.c_str(), m_pImpl->m_LocalLyricsPath.c_str(), m_pImpl->m_Snapshot.m_Title.c_str(), m_pImpl->DisplayPositionMs(), m_pImpl->m_Snapshot.m_DurationMs, Playing);
+	}
+	else if(LyricsAllowed && (g_Config.m_BcMusicPlayerShowLyrics != 0 || g_Config.m_ElyLyricsEnabled) && m_pImpl->m_Snapshot.m_Valid)
 	{
 		m_pImpl->m_Lyrics.Update(
 			Http(),
@@ -4154,7 +4302,7 @@ void CMusicPlayer::OnUpdate()
 			m_pImpl->m_Snapshot.m_Album.c_str(),
 			m_pImpl->m_Snapshot.m_DurationMs,
 			m_pImpl->DisplayPositionMs(),
-			m_pImpl->m_Snapshot.m_PlaybackState == EMusicPlaybackState::PLAYING);
+			m_pImpl->EffectivePlaying());
 	}
 	else
 	{
@@ -4165,9 +4313,11 @@ void CMusicPlayer::OnUpdate()
 
 void CMusicPlayer::OnRender()
 {
+	if(g_Config.m_ElyIslandEnabled)
+		return;
 	if(Client()->State() != IClient::STATE_ONLINE && Client()->State() != IClient::STATE_DEMOPLAYBACK)
 		return;
-	if(!m_pImpl)
+	if(!m_pImpl || !m_pImpl->m_Snapshot.m_Valid)
 		return;
 	if(GameClient()->m_Menus.IsActive() && !GameClient()->m_Menus.IsIngameGamePage())
 		return;
@@ -4205,9 +4355,11 @@ void CMusicPlayer::RenderMusicPlayer(bool ForcePreview)
 	const float Height = HudLayout::CANVAS_HEIGHT;
 	const float Width = Height * Graphics()->ScreenAspect();
 	Graphics()->MapScreenToSize(Width, Height);
-	const auto Layout = HudLayout::Get(HudLayout::MODULE_MUSIC_PLAYER, Width, Height);
+	auto Layout = HudLayout::Get(HudLayout::MODULE_MUSIC_PLAYER, Width, Height);
+	if(!ForcePreview && !HudLayout::HasPositionOverride(HudLayout::MODULE_MUSIC_PLAYER) && g_Config.m_ClShowhud)
+		Layout.m_Y += 25.0f;
 	const float ModuleAlpha = HudLayout::AlphaFactor(HudLayout::MODULE_MUSIC_PLAYER);
-	const SGameTimerDisplay GameTimer = BuildGameTimerDisplay(GameClient()->m_Snap.m_pGameInfoObj, Client()->GameTick(g_Config.m_ClDummy), Client()->GameTickSpeed(), ForcePreview);
+	const SGameTimerDisplay GameTimer{};
 	const float TextScale = MusicPlayerTextScale();
 	const float LayoutScale = std::clamp(Layout.m_Scale / 100.0f, 0.25f, 3.0f);
 	const float LayoutWidthScale = Width / std::max(HudLayout::CANVAS_WIDTH, 0.001f);
@@ -4663,4 +4815,206 @@ float MusicPlayerLegacyHudAnchorOffsetCanvasX(ITextRender *pTextRender, int Layo
 	if(pOutReady)
 		*pOutReady = true;
 	return 0.5f * (AnchorExpandedW - CompactW) * (HudLayout::CANVAS_WIDTH / Width);
+}
+
+
+void CMusicPlayer::OnConsoleInit()
+{
+	Console()->Register("ely_music_play_pause", "", CFGFLAG_CLIENT, [](IConsole::IResult *, void *pUser) { auto *pSelf = static_cast<CMusicPlayer *>(pUser); if(pSelf->m_pImpl) pSelf->m_pImpl->RequestElyPlayPause(); }, this, "Play or pause the current media session");
+	Console()->Register("ely_island_toggle", "", CFGFLAG_CLIENT, [](IConsole::IResult *, void *pUser) { static_cast<CMusicPlayer *>(pUser)->ToggleElyIsland(); }, this, "Expand or collapse the Ely music island (bind to any key)");
+}
+
+bool CMusicPlayer::OnInput(const IInput::CEvent &Event)
+{
+	if(g_Config.m_ElyMusicToggleKey > 0 && Event.m_Key == g_Config.m_ElyMusicToggleKey && (Event.m_Flags & IInput::FLAG_PRESS) &&
+		!GameClient()->m_GameConsole.IsActive() && !GameClient()->m_Chat.IsActive() && !GameClient()->m_Menus.IsActive())
+	{
+		ToggleElyIsland();
+		return true;
+	}
+	return false;
+}
+
+void CMusicPlayer::ToggleElyIsland()
+{
+	if(ElyIslandState().m_Music)
+		m_ElyExpanded = !m_ElyExpanded;
+}
+
+CMusicPlayer::SElyIslandState CMusicPlayer::ElyIslandState()
+{
+	SElyIslandState State;
+	if(!m_pImpl || !g_Config.m_ElyMusicEnabled)
+		return State;
+	const auto &Snapshot = m_pImpl->m_Snapshot;
+	const bool Selected = !g_Config.m_ElyMusicSource[0] || Snapshot.m_ServiceId == g_Config.m_ElyMusicSource;
+	const bool Playing = m_pImpl->EffectivePlaying() && Selected;
+	if(Playing)
+	{
+		m_ElyLastPlaying = time_get();
+		m_pImpl->m_ElyLastSnapshot = Snapshot;
+	}
+	else if(Snapshot.m_Valid && Selected && Snapshot.m_PlaybackState == EMusicPlaybackState::PAUSED)
+	{
+		m_ElyLastPlaying = time_get();
+		m_pImpl->m_ElyLastSnapshot = Snapshot;
+	}
+	const bool Grace = m_ElyLastPlaying > 0 && (time_get() - m_ElyLastPlaying) * 1000 / time_freq() < g_Config.m_ElyMusicStopDelay;
+	const bool Paused = Snapshot.m_Valid && Snapshot.m_PlaybackState == EMusicPlaybackState::PAUSED;
+	State.m_Music = Selected && (Playing || Paused || Grace);
+	if(!State.m_Music || (Snapshot.m_PlaybackState == EMusicPlaybackState::STOPPED && g_Config.m_ElyMusicAutoCollapse))
+		m_ElyExpanded = false;
+	State.m_Expanded = State.m_Music && m_ElyExpanded;
+	State.m_HasLyrics = g_Config.m_ElyLyricsEnabled && (m_pImpl->m_Lyrics.HasSyncedLines() || g_Config.m_ElyLyricsMissing);
+	const auto &Last = m_pImpl->m_ElyLastSnapshot;
+	const bool Progress = g_Config.m_ElyMusicProgress && Last.m_DurationMs > 0;
+	const bool Controls = g_Config.m_ElyMusicControls && (Last.m_CanPrev || Last.m_CanPlayPause || Last.m_CanNext);
+	State.m_ExpandedHeight = 28.0f + (g_Config.m_ElyMusicControls && (Last.m_CanPrev || Last.m_CanNext) ? 12.0f : 0.0f);
+	static int s_LastMode = -1;
+	const int Mode = State.m_Music + State.m_Expanded * 2 + Playing * 4;
+	if(g_Config.m_Debug && Mode != s_LastMode)
+		log_info("ely-island", "music=%d expanded=%d playing=%d title=%s", State.m_Music, State.m_Expanded, Playing, m_pImpl->m_ElyLastSnapshot.m_Title.c_str());
+	s_LastMode = Mode;
+	return State;
+}
+
+
+void CMusicPlayer::RenderElyIslandContent(const CUIRect &Rect, float Alpha, float Scale)
+{
+	if(!m_pImpl || Alpha < .005f) return;
+	const auto &Snapshot = m_pImpl->m_ElyLastSnapshot;
+	m_pImpl->ResolvePendingToggle();
+	const bool Playing = m_pImpl->EffectivePlaying();
+	const float Width = 300.0f * Graphics()->ScreenAspect();
+	const float UiFactor = Ui()->Screen()->h / 300.0f;
+	const vec2 WindowSize(std::max(1, Graphics()->WindowWidth()), std::max(1, Graphics()->WindowHeight()));
+	const vec2 Mouse = Ui()->UpdatedMousePos() * vec2(Ui()->Screen()->w, Ui()->Screen()->h) / WindowSize / UiFactor;
+	const bool Interactive = GameClient()->m_Chat.IsActive() || GameClient()->m_Scoreboard.IsMouseUnlocked();
+	const bool Clicked = Interactive && (Ui()->MouseButtonClicked(0) || Input()->KeyPress(KEY_MOUSE_1));
+	const float Unit = Scale;
+	const float Top = Rect.y + 4.0f * Unit;
+	const float Right = Rect.x + Rect.w - 11.0f * Unit;
+	const bool Timeline = Snapshot.m_DurationMs > 0;
+	const bool Eq = g_Config.m_ElyMusicEqualizer != 0;
+	const float EqWidth = Eq ? 16.0f * Unit : 0;
+	const float PauseX = Right - EqWidth - (Snapshot.m_CanPlayPause && g_Config.m_ElyMusicControls ? 14.0f * Unit : 0);
+	float TextX = Rect.x + 10.0f * Unit;
+	const auto Label = [&](const char *pText, float X, float Y, float Size, float MaxWidth, ColorRGBA Color, bool Marquee) {
+		if(!pText[0] || MaxWidth < Unit) return;
+		const float Measured = TextRender()->TextWidth(Size, pText);
+		const float Travel = std::max(0.0f, Measured - MaxWidth);
+		float Offset = 0;
+		if(Marquee && Travel > 0 && !g_Config.m_ElyIslandReducedMotion && g_Config.m_BcAnimations)
+		{
+			const float Period = Travel / (8.0f * Unit) + 3.0f;
+			const float Phase = std::fmod(m_pImpl->m_ElyMarqueeTime, Period * 2.0f);
+			Offset = Travel * std::clamp((Phase < Period ? Phase : Period * 2.0f - Phase) / Period * 1.5f - .25f, 0.0f, 1.0f);
+		}
+		Graphics()->ClipEnable((int)(X * Graphics()->ScreenWidth() / Width), (int)(Y * Graphics()->ScreenHeight() / 300.0f), (int)(MaxWidth * Graphics()->ScreenWidth() / Width), (int)((Size + 3 * Unit) * Graphics()->ScreenHeight() / 300.0f));
+		TextRender()->TextColor(Color.WithMultipliedAlpha(Alpha));
+		TextRender()->TextOutlineColor(0, 0, 0, 0);
+		TextRender()->Text(X - Offset, Y, Size, pText);
+		Graphics()->ClipDisable();
+	};
+	if(g_Config.m_ElyMusicCover)
+	{
+		const CUIRect ArtRect = {TextX, Top, 20.0f * Unit, 20.0f * Unit};
+		IGraphics::CTextureHandle Art;
+		const bool HaveArt = !m_pImpl->m_vArtFrames.empty() && MediaDecoder::GetCurrentFrameTexture(m_pImpl->m_vArtFrames, m_pImpl->m_ArtAnimated, m_pImpl->m_ArtAnimationStart, Art);
+		if(HaveArt)
+			DrawRoundedTexture(Graphics(), Art, ArtRect, 5.0f * Unit, m_pImpl->m_ArtWidth, m_pImpl->m_ArtHeight, MusicArtCropProfile(Snapshot.m_ServiceId), Alpha);
+		else
+		{
+			ArtRect.Draw(ColorRGBA(.19f, .15f, .30f, .85f * Alpha), IGraphics::CORNER_ALL, 5.0f * Unit);
+			TextRender()->SetFontPreset(EFontPreset::ICON_FONT);
+			Label(FontIcon::MUSIC, ArtRect.x + 6.0f * Unit, ArtRect.y + 5.0f * Unit, 9.0f * Unit, 11.0f * Unit, ColorRGBA(.82f, .72f, 1, 1), false);
+			TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
+		}
+		TextX += 26.0f * Unit;
+	}
+	const float TextWidth = std::max(8.0f * Unit, PauseX - TextX - 5.0f * Unit);
+	std::string Title;
+	if(Timeline && g_Config.m_ElyMusicArtist && !Snapshot.m_Artist.empty()) Title = Snapshot.m_Artist;
+	if(g_Config.m_ElyMusicTitle && !Snapshot.m_Title.empty())
+	{
+		if(!Title.empty()) Title += " \u2014 ";
+		Title += Snapshot.m_Title;
+	}
+	if(Title.empty() && g_Config.m_ElyMusicArtist) Title = Snapshot.m_Artist;
+	Label(Title.c_str(), TextX, Top - .5f * Unit, 7.0f * Unit, TextWidth, ColorRGBA(.99f, .98f, 1, 1), true);
+	const int64_t Position = m_pImpl->DisplayPositionMs();
+	if(Timeline)
+	{
+		char aTime[64];
+		str_format(aTime, sizeof(aTime), "%d:%02d / %d:%02d", (int)(Position / 60000), (int)(Position / 1000 % 60), (int)(Snapshot.m_DurationMs / 60000), (int)(Snapshot.m_DurationMs / 1000 % 60));
+		Label(aTime, TextX, Top + 9.0f * Unit, 4.8f * Unit, TextWidth, ColorRGBA(.80f, .78f, .86f, 1), false);
+	}
+	else if(g_Config.m_ElyMusicArtist)
+		Label(Snapshot.m_Artist.c_str(), TextX, Top + 9.0f * Unit, 4.8f * Unit, TextWidth, ColorRGBA(.74f, .70f, .81f, 1), true);
+	if(Timeline && g_Config.m_ElyMusicProgress)
+	{
+		const float Progress = std::clamp((float)Position / Snapshot.m_DurationMs, 0.0f, 1.0f);
+		CUIRect Track = {TextX, Rect.y + 23.0f * Unit, TextWidth, 1.25f * Unit};
+		Track.Draw(ColorRGBA(.29f, .24f, .39f, .85f * Alpha), IGraphics::CORNER_ALL, Unit);
+		Track.w *= Progress;
+		Track.Draw(ColorRGBA(.69f, .39f, .98f, .95f * Alpha), IGraphics::CORNER_ALL, Unit);
+		const CUIRect Knob = {Track.x + Track.w - 1.2f * Unit, Track.y - .6f * Unit, 2.5f * Unit, 2.5f * Unit};
+		Knob.Draw(ColorRGBA(.77f, .49f, 1, Alpha), IGraphics::CORNER_ALL, 1.25f * Unit);
+	}
+	bool ControlHit = false;
+	if(g_Config.m_ElyMusicControls && Snapshot.m_CanPlayPause)
+	{
+		const CUIRect Button = {PauseX, Rect.y + 5.0f * Unit, 12.0f * Unit, 16.0f * Unit};
+		const bool Hover = Interactive && IsPointInsideRect(Button, Mouse, 0);
+		TextRender()->SetFontPreset(EFontPreset::ICON_FONT);
+		Label(Playing ? FontIcon::PAUSE : FontIcon::PLAY, Button.x + 2 * Unit, Button.y + 3.5f * Unit, 8.0f * Unit, Button.w, ColorRGBA(1, 1, 1, Hover ? 1 : .92f), false);
+		TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
+		if(Clicked && Hover && m_pImpl->m_pProviderThread) { m_pImpl->RequestElyPlayPause(); ControlHit = true; }
+	}
+	if(Eq)
+	{
+		const auto Audio = ElyAudio::Snapshot();
+		const int Bands = std::clamp(g_Config.m_ElyMusicEqBands, 4, 7);
+		static std::array<float, 7> s_aLevels{};
+		const float Blend = 1 - std::exp(-Client()->RenderFrameTime() * (5.0f + (100 - g_Config.m_ElyMusicEqSmoothing) * .5f));
+		for(int i = 0; i < Bands; ++i)
+		{
+			const float Target = Playing && Audio.m_Available ? std::sqrt(std::clamp(Audio.m_aBands[i * 7 / Bands] * 8.0f, 0.0f, 1.0f)) * g_Config.m_ElyMusicEqIntensity / 100.0f : 0;
+			s_aLevels[i] = mix(s_aLevels[i], Target, Blend);
+			const float H = (2.0f + std::clamp(s_aLevels[i], 0.0f, 1.0f) * 13.0f) * Unit;
+			const float Step = EqWidth / Bands;
+			const CUIRect Bar = {Right - EqWidth + i * Step, Rect.y + 14 * Unit - H / 2, std::max(.8f * Unit, Step * .55f), H};
+			Bar.Draw(ColorRGBA(.73f, .46f, .98f, Alpha * (Playing ? .95f : .35f)), IGraphics::CORNER_ALL, Step * .28f);
+		}
+	}
+	// Expand only adds capabilities the source actually offers; the compact capsule already owns pause.
+	const bool Navigation = g_Config.m_ElyMusicControls && (Snapshot.m_CanPrev || Snapshot.m_CanNext);
+	const float Extra = std::clamp((Rect.h / Unit - 28.0f) / 12.0f, 0.0f, 1.0f);
+	if(Navigation && Extra > .05f)
+	{
+		const bool Allowed[] = {Snapshot.m_CanPrev, Snapshot.m_CanNext};
+		const char *Icons[] = {FontIcon::BACKWARD_STEP, FontIcon::FORWARD_STEP};
+		for(int i = 0; i < 2; ++i)
+		{
+			if(!Allowed[i]) continue;
+			const CUIRect Button = {Rect.x + Rect.w * .5f + (i ? 7.0f : -19.0f) * Unit, Rect.y + 28.0f * Unit, 12.0f * Unit, 10.0f * Unit};
+			TextRender()->SetFontPreset(EFontPreset::ICON_FONT);
+			Label(Icons[i], Button.x + 2 * Unit, Button.y + Unit, 6.5f * Unit, Button.w, ColorRGBA(.94f, .89f, 1, Extra), false);
+			TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
+			if(Clicked && Extra > .8f && IsPointInsideRect(Button, Mouse, 0) && m_pImpl->m_pProviderThread) { m_pImpl->m_pProviderThread->SendCommand(i ? EProviderCommand::NEXT : EProviderCommand::PREVIOUS); ControlHit = true; }
+		}
+	}
+	const CUIRect Header = {Rect.x, Rect.y, Rect.w, std::min(Rect.h, 28.0f * Unit)};
+	if(Clicked && !ControlHit && IsPointInsideRect(Header, Mouse, 0)) m_ElyExpanded = !m_ElyExpanded;
+	if(g_Config.m_ElyLyricsEnabled && m_pImpl->m_Lyrics.HasSyncedLines())
+	{
+		const float Font = std::max(8.5f, g_Config.m_ElyLyricsFontSize * .1f) * Unit;
+		const CUIRect Lyrics = {Rect.x - 12 * Unit, Rect.y + Rect.h + 5.0f * Unit, Rect.w + 24 * Unit, 26.0f * Unit};
+		const CUIRect UiLyrics = {Lyrics.x * UiFactor, Lyrics.y * UiFactor, Lyrics.w * UiFactor, Lyrics.h * UiFactor};
+		Ui()->MapScreen();
+		m_pImpl->m_Lyrics.RenderElyFlow(TextRender(), Ui(), UiLyrics, Font * UiFactor, Client()->RenderFrameTime(), Alpha * g_Config.m_ElyLyricsOpacity / 100.0f);
+		Graphics()->MapScreenToSize(Width, 300.0f);
+	}
+	TextRender()->TextColor(TextRender()->DefaultTextColor());
+	TextRender()->TextOutlineColor(TextRender()->DefaultTextOutlineColor());
 }

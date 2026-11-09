@@ -27,6 +27,12 @@ public:
 
 	int Sizeof() const override { return sizeof(*this); }
 
+	void OnConsoleInit() override;
+	bool OnInput(const IInput::CEvent &Event) override;
+	struct SElyIslandState { bool m_Music = false; bool m_Expanded = false; bool m_HasLyrics = false; float m_ExpandedHeight = 45.0f; };
+	SElyIslandState ElyIslandState();
+	void RenderElyIslandContent(const CUIRect &Rect, float Alpha, float Scale);
+	void ToggleElyIsland();
 	void OnReset() override;
 	void OnUpdate() override;
 	void OnRender() override;
@@ -39,6 +45,8 @@ public:
 	void RenderHudEditor(bool ForcePreview);
 
 private:
+	bool m_ElyExpanded = false;
+	int64_t m_ElyLastPlaying = 0;
 	class CImpl;
 	std::unique_ptr<CImpl> m_pImpl;
 

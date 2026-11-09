@@ -923,6 +923,10 @@ Auto margin
 == Автомаргин
 
 [BestClient]
+Input Debounce
+== Инпут дебаунс
+
+[BestClient]
 Snap Tap
 == Снап тап
 
@@ -2225,3 +2229,95 @@ Others
 [Gradient]
 All
 == Все
+
+[BestClient]
+Aimbot
+== Аимбот
+
+[BestClient]
+Controls and accuracy
+== Управление и точность
+
+[BestClient]
+Enable aimbot
+== Включить аимбот
+
+[BestClient]
+Toggle aimbot
+== Вкл. / выкл.
+
+[BestClient]
+Hold to aim
+== Удерживать
+
+[BestClient]
+Lead moving targets
+== Упреждать движение цели
+
+[BestClient]
+Skip targets behind walls
+== Пропускать цели за стенами
+
+[BestClient]
+Only my dummy
+== Только мой дамми
+
+[BestClient]
+FOV angle
+== Угол обзора (FOV)
+
+[BestClient]
+Aim smoothing
+== Плавность
+
+[BestClient]
+Range (0 = hook length)
+== Дальность (0 = длина хука)
+
+[BestClient]
+Smoothing 1 is immediate.
+== Плавность 1 — мгновенное наведение.
+
+[BestClient]
+Aimbot appearance
+== Внешний вид
+
+[BestClient]
+Show FOV lines
+== Показывать линии FOV
+
+[BestClient]
+Glow and fading tips
+== Свечение и затухание линий
+
+[BestClient]
+FOV line color
+== Цвет линий FOV
+
+[BestClient]
+FOV color on lock
+== Цвет FOV при наведении
+
+[BestClient]
+Tint target tee
+== Подкрашивать цель
+
+[BestClient]
+Target tint color
+== Цвет подсветки цели
+
+[BestClient]
+Tint strength
+== Сила подсветки
+
+[BestClient]
+Reset aimbot settings
+== Сбросить настройки аимбота
+
+[BestClient]
+Aimbot enabled
+== Аимбот включён
+
+[BestClient]
+Aimbot disabled
+== Аимбот выключен

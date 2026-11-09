@@ -30,10 +30,21 @@ public:
 		Offline,
 	};
 
+	struct SWord
+	{
+		int m_ByteOffset = 0;
+		int m_ByteLength = 0;
+		int64_t m_StartMs = -1;
+		int64_t m_EndMs = -1;
+		bool m_ExactStart = false;
+	};
+
 	struct SLine
 	{
 		int64_t m_StartMs = 0;
 		std::string m_Text;
+		std::vector<SWord> m_vWords;
+		bool m_HasWordTiming = false;
 	};
 
 	void Reset();
@@ -41,11 +52,19 @@ public:
 	void ClearLayoutState();
 	void Disable();
 	void Update(IHttp *pHttp, const char *pTitle, const char *pArtist, const char *pAlbum, int64_t DurationMs, int64_t SnapshotPositionMs, bool Playing);
+	void UpdateLocal(const char *pLrc, const char *pKey, const char *pTitle, int64_t PositionMs, int64_t DurationMs, bool Playing);
 	void AbortRequest();
 
 	EDisplayState State() const { return m_DisplayState; }
 	bool IsActive() const { return !m_ActiveKey.empty() || m_pRequest != nullptr; }
 	bool HasSyncedLines() const { return !m_vLines.empty(); }
+	bool HasWordTiming() const
+	{
+		for(const auto &Line : m_vLines)
+			if(Line.m_HasWordTiming)
+				return true;
+		return false;
+	}
 	int64_t CurrentPositionMs() const;
 
 	static float LyricsTextSlotWidth(float Scale, float WidthScale);
@@ -55,6 +74,7 @@ public:
 	float PreferredTextSlotWidth(ITextRender *pTextRender, float FontSize, float MaxWidth, float Scale, float WidthScale) const;
 
 	void Render(ITextRender *pTextRender, CUi *pUi, const CUIRect &Area, float FontSize, float Delta);
+	void RenderElyFlow(ITextRender *pTextRender, CUi *pUi, const CUIRect &Area, float FontSize, float Delta, float Alpha);
 
 private:
 	static constexpr int LINE_NONE = -99;
@@ -80,9 +100,18 @@ private:
 		float m_PrefixWidth = 0.0f;
 	};
 
+	struct SFlowWord
+	{
+		std::string m_Text;
+		float m_X = 0.0f;
+		float m_Y = 0.0f;
+		float m_Advance = 0.0f;
+	};
+
 	static std::string BuildCacheKey(const char *pTitle, const char *pArtist, int64_t DurationMs);
 	static bool ParseLrcTimestamp(const char *pText, int64_t &OutMs, const char **ppEnd);
 	static void MergeConsecutiveIdenticalLines(std::vector<SLine> &vLines);
+	static void BuildWordTimings(SLine &Line, int64_t EndMs);
 	static bool IsCountdownIndex(int Index) { return Index >= -3 && Index <= -1; }
 	static bool IsFallbackIndex(int Index)
 	{
@@ -122,7 +151,19 @@ private:
 	int64_t m_ClockTick = 0;
 	bool m_ClockPlaying = false;
 	int64_t m_ClockDurationMs = 0;
+	int64_t m_LastSnapshotPositionMs = -1;
 
+	int m_ElyCurrentLine = -1;
+	float m_ElyLineTransition = 1.0f;
+	int m_ElyCurrentWord = -1;
+	int m_ElyPreviousWord = -1;
+	float m_ElyWordTransition = 1.0f;
+	int m_ElyLayoutLine = -1;
+	float m_ElyLayoutWidth = 0.0f;
+	float m_ElyLayoutHeight = 0.0f;
+	float m_ElyRequestedFont = 0.0f;
+	float m_ElyFlowFontSize = 0.0f;
+	std::vector<SFlowWord> m_vElyFlowWords;
 	int m_CurrentLineIndex = LINE_NONE;
 	int m_OutgoingLineIndex = LINE_NONE;
 	float m_LineTransitionT = 1.0f;

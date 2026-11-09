@@ -1119,6 +1119,14 @@ int CGraphicsBackend_SDL_GL::Init(const char *pName, int *pScreen, int *pWidth, 
 		SdlFlags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
 
 	bool IsFullscreen = (SdlFlags & SDL_WINDOW_FULLSCREEN) != 0 || g_Config.m_GfxFullscreen == 3;
+#if defined(CONF_FAMILY_WINDOWS)
+	SDL_Rect UsableBounds;
+	if(!IsFullscreen && (*pWidth == 0 || *pHeight == 0) && SDL_GetDisplayUsableBounds(*pScreen, &UsableBounds) == 0)
+	{
+		*pWidth = std::min({1600, UsableBounds.w * 9 / 10, UsableBounds.h * 8 / 5});
+		*pHeight = *pWidth * 9 / 16;
+	}
+#endif
 	// use desktop resolution as default resolution, clamp resolution if users's display is smaller than we remembered
 	// if the user starts in fullscreen, and the resolution was not found use the desktop one
 	if((IsFullscreen && !SupportedResolution) || *pWidth == 0 || *pHeight == 0 || (IsDesktopChanged && (!SupportedResolution || !IsFullscreen) && (*pWidth > *pDesktopWidth || *pHeight > *pDesktopHeight)))
@@ -1437,6 +1445,60 @@ void CGraphicsBackend_SDL_GL::Minimize()
 	SDL_MinimizeWindow(m_pWindow);
 }
 
+void CGraphicsBackend_SDL_GL::ToggleMaximize()
+{
+	const Uint32 Flags = SDL_GetWindowFlags(m_pWindow);
+	if((Flags & SDL_WINDOW_RESIZABLE) == 0 || (Flags & SDL_WINDOW_FULLSCREEN) != 0)
+		return;
+	if((Flags & SDL_WINDOW_MAXIMIZED) != 0)
+		SDL_RestoreWindow(m_pWindow);
+	else
+		SDL_MaximizeWindow(m_pWindow);
+}
+
+#if defined(CONF_FAMILY_WINDOWS)
+static SDL_HitTestResult SDLCALL ElyStartHitTest(SDL_Window *pWindow, const SDL_Point *pPoint, void *)
+{
+	const Uint32 Flags = SDL_GetWindowFlags(pWindow);
+	if((Flags & SDL_WINDOW_RESIZABLE) == 0 || (Flags & SDL_WINDOW_FULLSCREEN) != 0)
+		return SDL_HITTEST_NORMAL;
+	int Width, Height;
+	SDL_GetWindowSize(pWindow, &Width, &Height);
+	if((Flags & SDL_WINDOW_MAXIMIZED) == 0)
+	{
+		constexpr int EdgeSize = 6;
+		const int Column = pPoint->x < EdgeSize ? 0 : (pPoint->x >= Width - EdgeSize ? 2 : 1);
+		const int Row = pPoint->y < EdgeSize ? 0 : (pPoint->y >= Height - EdgeSize ? 2 : 1);
+		constexpr SDL_HitTestResult aaResize[3][3] = {
+			{SDL_HITTEST_RESIZE_TOPLEFT, SDL_HITTEST_RESIZE_TOP, SDL_HITTEST_RESIZE_TOPRIGHT},
+			{SDL_HITTEST_RESIZE_LEFT, SDL_HITTEST_NORMAL, SDL_HITTEST_RESIZE_RIGHT},
+			{SDL_HITTEST_RESIZE_BOTTOMLEFT, SDL_HITTEST_RESIZE_BOTTOM, SDL_HITTEST_RESIZE_BOTTOMRIGHT},
+		};
+		if(aaResize[Row][Column] != SDL_HITTEST_NORMAL)
+			return aaResize[Row][Column];
+	}
+	const float Scale = Height / 941.0f;
+	if(pPoint->y < 63.0f * Scale && pPoint->x < Width - 186.0f * Scale)
+		return SDL_HITTEST_DRAGGABLE;
+	return SDL_HITTEST_NORMAL;
+}
+#endif
+
+void CGraphicsBackend_SDL_GL::SetElyStartScreen(bool Active)
+{
+#if defined(CONF_FAMILY_WINDOWS)
+	if(Active == m_ElyStartScreen || !m_pWindow)
+		return;
+	if(SDL_SetWindowHitTest(m_pWindow, Active ? ElyStartHitTest : nullptr, nullptr) != 0)
+		return;
+	m_ElyStartScreen = Active;
+	if(g_Config.m_GfxFullscreen == 0)
+		SDL_SetWindowBordered(m_pWindow, SDL_bool(!Active && !g_Config.m_GfxBorderless));
+#else
+	(void)Active;
+#endif
+}
+
 void CGraphicsBackend_SDL_GL::SetWindowParams(int FullscreenMode, bool IsBorderless)
 {
 	// The flags have to be kept consistent with flags set in the CGraphics_Threaded::IssueInit function!
@@ -1483,7 +1545,7 @@ void CGraphicsBackend_SDL_GL::SetWindowParams(int FullscreenMode, bool IsBorderl
 	else // Windowed
 	{
 		SDL_SetWindowFullscreen(m_pWindow, 0);
-		SDL_SetWindowBordered(m_pWindow, SDL_bool(!IsBorderless));
+		SDL_SetWindowBordered(m_pWindow, SDL_bool(!IsBorderless && !m_ElyStartScreen));
 		SDL_SetWindowResizable(m_pWindow, SDL_TRUE);
 	}
 }

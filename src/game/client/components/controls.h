@@ -63,15 +63,52 @@ public:
 	void OnRender() override;
 	void OnMessage(int MsgType, void *pRawMsg) override;
 	bool OnCursorMove(float x, float y, IInput::ECursorType CursorType) override;
+	bool OnInput(const IInput::CEvent &Event) override;
 	void OnConsoleInit() override;
 	virtual void OnPlayerDeath();
 
 	int SnapInput(int *pData);
 	void ClampMousePos();
+	bool HookAimHeld() const;
+	int HookAimTarget() const;
+	bool ApplyHookAimInput(CNetObj_PlayerInput &Input) const;
+	void UpdateHookAim();
+	void RenderHookAim();
 	void ResetInput(int Dummy);
 	bool CheckNewInput();
 
+	// bestclient
+	void InputDebounce(int Dummy, int Input);
+	struct CInputDebounceState
+	{
+		int m_Direction = 0;
+		int m_Jump = 0;
+		int m_Hook = 0;
+	};
+	CInputDebounceState m_aInputDebounce[NUM_DUMMIES];
+
+	// bestclient
+
 private:
+	int m_HookAimTarget = -1;
+	int m_HookAimConn = -1;
+	int64_t m_HookAimTime = 0;
+	vec2 m_HookAimDirection;
+	bool HookAimInputAvailable() const;
+	bool HookAimReady() const;
+	float HookAimReach() const;
+	void ToggleHookAim();
+
+	// bestclient
+	enum
+	{
+		INPUT_LEFT,
+		INPUT_RIGHT,
+		INPUT_JUMP,
+		INPUT_HOOK,
+	};
+	// bestclient
+
 	static void ConKeyInputState(IConsole::IResult *pResult, void *pUserData);
 	static void ConKeyInputCounter(IConsole::IResult *pResult, void *pUserData);
 	static void ConKeyInputSet(IConsole::IResult *pResult, void *pUserData);

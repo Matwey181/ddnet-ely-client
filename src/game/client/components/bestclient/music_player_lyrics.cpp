@@ -1,5 +1,6 @@
 /* Copyright © 2026 BestProject Team */
 #include "music_player_lyrics.h"
+#include <engine/shared/config.h>
 
 #include <base/dbg.h>
 #include <base/math.h>
@@ -13,9 +14,11 @@
 #include <game/client/bc_ui_animations.h>
 #include <game/client/components/bestclient/version.h>
 #include <game/client/ui.h>
+#include <game/version.h>
 
 #include <algorithm>
 #include <cmath>
+#include <cctype>
 #include <cstring>
 
 namespace
@@ -26,6 +29,13 @@ namespace
 	static constexpr ColorRGBA LYRICS_PASSED_COLOR(1.0f, 1.0f, 1.0f, 1.0f);
 	static constexpr ColorRGBA LYRICS_UPCOMING_COLOR(0.45f, 0.45f, 0.48f, 1.0f);
 	static constexpr size_t LYRICS_CACHE_MAX = 64;
+
+	static bool IsLyricsWhitespace(int Codepoint)
+	{
+		return (Codepoint >= 9 && Codepoint <= 13) || Codepoint == 0x20 || Codepoint == 0x85 || Codepoint == 0xA0 ||
+			Codepoint == 0x1680 || (Codepoint >= 0x2000 && Codepoint <= 0x200A) || Codepoint == 0x2028 || Codepoint == 0x2029 ||
+			Codepoint == 0x202F || Codepoint == 0x205F || Codepoint == 0x3000;
+	}
 
 	static const char *JsonStringOrEmpty(const json_value *pValue)
 	{
@@ -157,6 +167,11 @@ void CMusicPlayerLyrics::Reset()
 
 void CMusicPlayerLyrics::ClearActiveTrack()
 {
+	m_ElyCurrentLine = -1;
+	m_ElyCurrentWord = m_ElyPreviousWord = -1;
+	m_ElyLineTransition = m_ElyWordTransition = 1.0f;
+	m_ElyLayoutLine = -1;
+	m_vElyFlowWords.clear();
 	m_CurrentLineIndex = LINE_NONE;
 	m_OutgoingLineIndex = LINE_NONE;
 	m_LineTransitionT = 1.0f;
@@ -171,10 +186,16 @@ void CMusicPlayerLyrics::ClearActiveTrack()
 	m_ClockTick = 0;
 	m_ClockPlaying = false;
 	m_ClockDurationMs = 0;
+	m_LastSnapshotPositionMs = -1;
 }
 
 void CMusicPlayerLyrics::ClearLayoutState()
 {
+	m_ElyCurrentLine = -1;
+	m_ElyCurrentWord = m_ElyPreviousWord = -1;
+	m_ElyLineTransition = m_ElyWordTransition = 1.0f;
+	m_ElyLayoutLine = -1;
+	m_vElyFlowWords.clear();
 	m_CurrentLineIndex = LINE_NONE;
 	m_OutgoingLineIndex = LINE_NONE;
 	m_LineTransitionT = 1.0f;
@@ -220,8 +241,9 @@ std::string CMusicPlayerLyrics::BuildCacheKey(const char *pTitle, const char *pA
 
 bool CMusicPlayerLyrics::ParseLrcTimestamp(const char *pText, int64_t &OutMs, const char **ppEnd)
 {
-	if(pText == nullptr || pText[0] != '[')
+	if(pText == nullptr || (pText[0] != '[' && pText[0] != '<'))
 		return false;
+	const char Closing = pText[0] == '[' ? ']' : '>';
 
 	int Minutes = 0;
 	int Seconds = 0;
@@ -234,6 +256,8 @@ bool CMusicPlayerLyrics::ParseLrcTimestamp(const char *pText, int64_t &OutMs, co
 	while(std::isdigit((unsigned char)*p))
 	{
 		Minutes = Minutes * 10 + (*p - '0');
+		if(Minutes > 9999)
+			return false;
 		++p;
 	}
 	if(*p != ':')
@@ -244,6 +268,8 @@ bool CMusicPlayerLyrics::ParseLrcTimestamp(const char *pText, int64_t &OutMs, co
 	while(std::isdigit((unsigned char)*p))
 	{
 		Seconds = Seconds * 10 + (*p - '0');
+		if(Seconds >= 60)
+			return false;
 		++p;
 	}
 	if(*p == '.' || *p == ',')
@@ -258,7 +284,7 @@ bool CMusicPlayerLyrics::ParseLrcTimestamp(const char *pText, int64_t &OutMs, co
 		while(std::isdigit((unsigned char)*p))
 			++p;
 	}
-	if(*p != ']')
+	if(*p != Closing)
 		return false;
 	++p;
 
@@ -300,7 +326,7 @@ bool CMusicPlayerLyrics::ParseSyncedLyrics(const char *pSyncedLyrics, std::vecto
 		{
 			int64_t TimestampMs = 0;
 			const char *pAfter = nullptr;
-			if(!ParseLrcTimestamp(pCursor, TimestampMs, &pAfter) || pAfter == nullptr || pAfter > pLineEnd)
+			if(*pCursor != '[' || !ParseLrcTimestamp(pCursor, TimestampMs, &pAfter) || pAfter == nullptr || pAfter > pLineEnd)
 				break;
 			vTimestamps.push_back(TimestampMs);
 			pCursor = pAfter;
@@ -312,7 +338,20 @@ bool CMusicPlayerLyrics::ParseSyncedLyrics(const char *pSyncedLyrics, std::vecto
 		if(vTimestamps.empty())
 			continue;
 
-		std::string Text(pCursor, pLineEnd);
+		std::string Text;
+		std::vector<std::pair<int, int64_t>> vWordMarks;
+		while(pCursor < pLineEnd)
+		{
+			int64_t TimestampMs;
+			const char *pAfter = nullptr;
+			if(*pCursor == '<' && ParseLrcTimestamp(pCursor, TimestampMs, &pAfter) && pAfter <= pLineEnd)
+			{
+				vWordMarks.emplace_back((int)Text.size(), TimestampMs);
+				pCursor = pAfter;
+			}
+			else
+				Text += *pCursor++;
+		}
 		while(!Text.empty() && (Text.back() == ' ' || Text.back() == '\t'))
 			Text.pop_back();
 
@@ -324,6 +363,43 @@ bool CMusicPlayerLyrics::ParseSyncedLyrics(const char *pSyncedLyrics, std::vecto
 			SLine Line;
 			Line.m_StartMs = TimestampMs;
 			Line.m_Text = Text;
+			const char *pText = Text.c_str();
+			while(*pText)
+			{
+				const char *pStart = pText;
+				const int Codepoint = str_utf8_decode(&pText);
+				if(IsLyricsWhitespace(Codepoint))
+					continue;
+				while(*pText)
+				{
+					const char *pNext = pText;
+					if(IsLyricsWhitespace(str_utf8_decode(&pNext)))
+						break;
+					pText = pNext;
+				}
+				SWord Word;
+				Word.m_ByteOffset = pStart - Text.c_str();
+				Word.m_ByteLength = pText - pStart;
+				Line.m_vWords.push_back(Word);
+			}
+			for(const auto &[Offset, Time] : vWordMarks)
+			{
+				const int64_t ShiftedTime = std::max<int64_t>(0, Time + TimestampMs - vTimestamps.front());
+				const auto It = std::find_if(Line.m_vWords.begin(), Line.m_vWords.end(), [&](const SWord &Word) {
+					return Word.m_ByteOffset + Word.m_ByteLength > Offset;
+				});
+				if(It == Line.m_vWords.end())
+				{
+					if(!Line.m_vWords.empty())
+						Line.m_vWords.back().m_EndMs = ShiftedTime;
+				}
+				else if(!It->m_ExactStart)
+				{
+					It->m_StartMs = ShiftedTime;
+					It->m_ExactStart = true;
+					Line.m_HasWordTiming = true;
+				}
+			}
 			vOut.push_back(std::move(Line));
 		}
 	}
@@ -335,7 +411,53 @@ bool CMusicPlayerLyrics::ParseSyncedLyrics(const char *pSyncedLyrics, std::vecto
 		return A.m_StartMs < B.m_StartMs;
 	});
 	MergeConsecutiveIdenticalLines(vOut);
+	for(size_t i = 0; i < vOut.size(); ++i)
+		BuildWordTimings(vOut[i], i + 1 < vOut.size() ? vOut[i + 1].m_StartMs : vOut[i].m_StartMs + 4000);
 	return !vOut.empty();
+}
+
+void CMusicPlayerLyrics::BuildWordTimings(SLine &Line, int64_t EndMs)
+{
+	if(Line.m_vWords.empty())
+		return;
+	std::vector<float> vWeights;
+	for(const auto &Word : Line.m_vWords)
+	{
+		float Weight = 0.0f;
+		const char *p = Line.m_Text.c_str() + Word.m_ByteOffset;
+		const char *pEnd = p + Word.m_ByteLength;
+		while(p < pEnd)
+		{
+			const int Glyph = str_utf8_decode(&p);
+			Weight += Glyph == ',' || Glyph == ';' || Glyph == ':' ? 0.45f : Glyph == '.' || Glyph == '!' || Glyph == '?' ? 0.75f : 1.0f;
+		}
+		vWeights.push_back(std::max(1.0f, Weight));
+	}
+	if(Line.m_vWords.front().m_StartMs < 0)
+		Line.m_vWords.front().m_StartMs = Line.m_StartMs;
+	EndMs = std::max(Line.m_StartMs + 1, Line.m_vWords.back().m_EndMs >= 0 ? Line.m_vWords.back().m_EndMs : EndMs);
+	size_t First = 0;
+	while(First < Line.m_vWords.size())
+	{
+		size_t Next = First + 1;
+		while(Next < Line.m_vWords.size() && !Line.m_vWords[Next].m_ExactStart)
+			++Next;
+		const int64_t PreviousEnd = First > 0 ? Line.m_vWords[First - 1].m_EndMs : Line.m_StartMs;
+		const int64_t Start = std::max(PreviousEnd, Line.m_vWords[First].m_StartMs);
+		const int64_t End = std::max(Start + 1, Next < Line.m_vWords.size() ? Line.m_vWords[Next].m_StartMs : EndMs);
+		float TotalWeight = 0.0f;
+		for(size_t i = First; i < Next; ++i)
+			TotalWeight += vWeights[i];
+		float Elapsed = 0.0f;
+		for(size_t i = First; i < Next; ++i)
+		{
+			auto &Word = Line.m_vWords[i];
+			Word.m_StartMs = Start + (int64_t)((End - Start) * (Elapsed / TotalWeight));
+			Elapsed += vWeights[i];
+			Word.m_EndMs = Start + (int64_t)((End - Start) * (Elapsed / TotalWeight));
+		}
+		First = Next;
+	}
 }
 
 void CMusicPlayerLyrics::MergeConsecutiveIdenticalLines(std::vector<SLine> &vLines)
@@ -386,20 +508,9 @@ void CMusicPlayerLyrics::StartRequest(IHttp *pHttp, const char *pTitle, const ch
 	EscapeUrl(aEscapedArtist, pArtist ? pArtist : "");
 	EscapeUrl(aEscapedAlbum, pAlbum ? pAlbum : "");
 
-	const int DurationSec = (int)((std::max<int64_t>(0, DurationMs) + 500) / 1000);
+	// Search tolerates album/version metadata differences from Windows media sessions.
 	char aUrl[2048];
-	if(DurationSec >= 1 && DurationSec <= 3600)
-	{
-		str_format(aUrl, sizeof(aUrl),
-			"https://lrclib.net/api/get?track_name=%s&artist_name=%s&album_name=%s&duration=%d",
-			aEscapedTitle, aEscapedArtist, aEscapedAlbum, DurationSec);
-	}
-	else
-	{
-		str_format(aUrl, sizeof(aUrl),
-			"https://lrclib.net/api/get?track_name=%s&artist_name=%s&album_name=%s",
-			aEscapedTitle, aEscapedArtist, aEscapedAlbum);
-	}
+	str_format(aUrl, sizeof(aUrl), "https://lrclib.net/api/search?track_name=%s&artist_name=%s", aEscapedTitle, aEscapedArtist);
 
 	m_pRequest = HttpGet(aUrl);
 	m_pRequest->Timeout(CTimeout{10000, 0, 500, 10});
@@ -448,9 +559,24 @@ void CMusicPlayerLyrics::ProcessRequest()
 	if(StatusCode != 404)
 	{
 		json_value *pRoot = pFinished->ResultJson();
-		if(pRoot != nullptr && pRoot != &json_value_none && pRoot->type == json_object)
+		const json_value *pCandidate = pRoot;
+		if(pRoot && pRoot->type == json_array)
 		{
-			const char *pSynced = JsonStringOrEmpty(json_object_get(pRoot, "syncedLyrics"));
+			pCandidate = nullptr;
+			double BestDistance = 1e30;
+			for(unsigned i = 0; i < pRoot->u.array.length; ++i)
+			{
+				const json_value *pEntry = pRoot->u.array.values[i];
+				if(pEntry->type != json_object || !JsonStringOrEmpty(json_object_get(pEntry, "syncedLyrics"))[0]) continue;
+				const json_value *pSeconds = json_object_get(pEntry, "duration");
+				const double Seconds = pSeconds->type == json_double ? pSeconds->u.dbl : (pSeconds->type == json_integer ? (double)pSeconds->u.integer : 0.0);
+				const double Distance = m_ClockDurationMs > 0 ? std::fabs(Seconds - m_ClockDurationMs / 1000.0) : 0.0;
+				if((m_ClockDurationMs <= 0 || Distance <= 10.0) && Distance < BestDistance) { BestDistance = Distance; pCandidate = pEntry; }
+			}
+		}
+		if(pCandidate != nullptr && pCandidate != &json_value_none && pCandidate->type == json_object)
+		{
+			const char *pSynced = JsonStringOrEmpty(json_object_get(pCandidate, "syncedLyrics"));
 			if(ParseSyncedLyrics(pSynced, Entry.m_vLines))
 				Entry.m_State = EDisplayState::Ready;
 		}
@@ -483,19 +609,27 @@ void CMusicPlayerLyrics::SyncMediaClock(int64_t SnapshotPositionMs, int64_t Dura
 	SnapshotPositionMs = std::max<int64_t>(0, SnapshotPositionMs);
 	m_ClockDurationMs = std::max<int64_t>(0, DurationMs);
 	const int64_t Now = time_get();
+	const int64_t ExpectedPosition = CurrentPositionMs();
 
-	if(!ForceReset && m_ClockTick != 0 && SnapshotPositionMs + BACKWARDS_SEEK_THRESHOLD_MS < CurrentPositionMs())
+	if(!ForceReset && m_ClockTick != 0 && SnapshotPositionMs + BACKWARDS_SEEK_THRESHOLD_MS < ExpectedPosition && SnapshotPositionMs != m_LastSnapshotPositionMs)
 		ClearLayoutState();
 
-	if(ForceReset || m_ClockTick == 0 || !Playing)
+	if(ForceReset || m_ClockTick == 0 || !Playing || !m_ClockPlaying)
 	{
 		m_ClockPositionMs = SnapshotPositionMs;
+		m_LastSnapshotPositionMs = SnapshotPositionMs;
 		m_ClockTick = Now;
 		m_ClockPlaying = Playing;
 		return;
 	}
 
-	m_ClockPositionMs = SnapshotPositionMs;
+	// SMTC snapshots may repeat for several polls. Keep the running clock between updates.
+	if(SnapshotPositionMs == m_LastSnapshotPositionMs)
+		return;
+	m_LastSnapshotPositionMs = SnapshotPositionMs;
+	const int64_t Error = SnapshotPositionMs - ExpectedPosition;
+	m_ClockPositionMs = std::abs(Error) > BACKWARDS_SEEK_THRESHOLD_MS ? SnapshotPositionMs :
+		ExpectedPosition + std::clamp<int64_t>(Error / 8, -20, 20);
 	m_ClockTick = Now;
 	m_ClockPlaying = true;
 	if(m_ClockDurationMs > 0)
@@ -624,7 +758,7 @@ const char *CMusicPlayerLyrics::FallbackText(int Index) const
 	if(Index == FALLBACK_NOT_FOUND)
 		return "Lyrics not found";
 	if(Index == FALLBACK_BRAND)
-		return "BestClient";
+		return CLIENT_NAME;
 	if(Index == FALLBACK_TITLE)
 		return m_TrackTitle.empty() ? "Unknown title" : m_TrackTitle.c_str();
 	return "";
@@ -823,7 +957,7 @@ void CMusicPlayerLyrics::Render(ITextRender *pTextRender, CUi *pUi, const CUIRec
 
 	if(m_LineTransitionT < 1.0f)
 	{
-		m_LineTransitionT = std::clamp(m_LineTransitionT + Delta * 1000.0f / LYRICS_LINE_SLIDE_MS, 0.0f, 1.0f);
+		m_LineTransitionT = std::clamp(m_LineTransitionT + Delta * 1000.0f / (g_Config.m_ElyIslandEnabled ? std::max(1, g_Config.m_ElyLyricsTransitionMs) : LYRICS_LINE_SLIDE_MS), 0.0f, 1.0f);
 		if(m_LineTransitionT >= 1.0f)
 			m_OutgoingLineIndex = LINE_NONE;
 	}
@@ -871,7 +1005,7 @@ void CMusicPlayerLyrics::Render(ITextRender *pTextRender, CUi *pUi, const CUIRec
 		TextStartX = ComputeTextStartX(Area.x, Area.w, CenterX, PlayheadX);
 	}
 
-	const float SlideT = BCUiAnimations::EaseOutCubic(m_LineTransitionT);
+	const float SlideT = g_Config.m_ElyIslandEnabled && (g_Config.m_ElyIslandReducedMotion || !g_Config.m_ElyLyricsAnimation || !g_Config.m_BcAnimations) ? 1.0f : BCUiAnimations::EaseOutCubic(m_LineTransitionT);
 	const float BaseY = Area.y + (Area.h - FontSize) * 0.5f;
 	const float IncomingY = BaseY + (1.0f - SlideT) * Area.h;
 	const float OutgoingY = BaseY - SlideT * Area.h;
@@ -882,6 +1016,7 @@ void CMusicPlayerLyrics::Render(ITextRender *pTextRender, CUi *pUi, const CUIRec
 		if(!IsCountdownIndex(DrawIndex) && !IsFallbackIndex(DrawIndex) && (DrawIndex < 0 || DrawIndex >= (int)m_vLines.size()))
 			return;
 
+		if(g_Config.m_ElyIslandEnabled) Alpha *= g_Config.m_ElyLyricsOpacity / 100.0f;
 		const char *pText = nullptr;
 		char aDigit[4];
 		float TextW = 0.0f;
@@ -925,6 +1060,13 @@ void CMusicPlayerLyrics::Render(ITextRender *pTextRender, CUi *pUi, const CUIRec
 		else
 			BuildColorSplits(ProgressCharsForColor, Alpha, m_vColorSplits);
 
+		if(g_Config.m_ElyIslandEnabled)
+		{
+			// Ordinary LRC carries line timestamps only; do not invent word timing.
+			const ColorRGBA Color = color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ElyLyricsColor));
+			m_vColorSplits.clear();
+			m_vColorSplits.emplace_back(0, -1, Color.WithAlpha(Alpha * (g_Config.m_ElyLyricsActiveHighlight && DrawIndex != m_CurrentLineIndex ? .55f : 1.0f)));
+		}
 		auto DrawOnce = [&](float DrawX) {
 			CTextCursor Cursor;
 			Cursor.m_FontSize = FontSize;
@@ -973,3 +1115,170 @@ void CMusicPlayerLyrics::Render(ITextRender *pTextRender, CUi *pUi, const CUIRec
 		ActiveColorMode = 2;
 	DrawDisplay(m_CurrentLineIndex, TextStartX, IncomingY, ProgressChars, ActiveAlpha, ActiveColorMode);
 }
+
+void CMusicPlayerLyrics::UpdateLocal(const char *pLrc, const char *pKey, const char *pTitle, int64_t PositionMs, int64_t DurationMs, bool Playing)
+{
+	const std::string Key = std::string("local|") + pKey;
+	const bool Changed = Key != m_ActiveKey;
+	if(Changed)
+	{
+		AbortRequest();
+		ClearLayoutState();
+		m_ActiveKey = Key;
+		m_TrackTitle = pTitle;
+		m_vLines.clear();
+		const bool Valid = ParseSyncedLyrics(pLrc, m_vLines);
+		m_DisplayState = Valid ? EDisplayState::Ready : EDisplayState::NotFound;
+	}
+	SyncMediaClock(PositionMs, DurationMs, Playing, Changed);
+}
+
+
+void CMusicPlayerLyrics::RenderElyFlow(ITextRender *pTextRender, CUi *pUi, const CUIRect &Area, float FontSize, float Delta, float Alpha)
+{
+	if(!pTextRender || !pUi || !HasSyncedLines() || Area.w <= 0 || Area.h <= 0 || Alpha <= 0.001f)
+		return;
+	const int64_t PositionMs = CurrentPositionMs();
+	const int Current = FindLineIndex(PositionMs);
+	if(Current < 0 || Current >= (int)m_vLines.size())
+		return;
+
+	if(Current != m_ElyCurrentLine)
+	{
+		m_ElyLineTransition = m_ElyCurrentLine >= 0 ? 0.0f : 1.0f;
+		m_ElyCurrentLine = Current;
+		m_ElyCurrentWord = m_ElyPreviousWord = -1;
+		m_ElyWordTransition = 1.0f;
+	}
+	const auto &Line = m_vLines[Current];
+	if(Line.m_vWords.empty())
+		return;
+
+	// The layout always reserves full-size advances, so a highlighted word cannot move its neighbours.
+	if(m_ElyLayoutLine != Current || m_ElyLayoutWidth != Area.w || m_ElyLayoutHeight != Area.h || m_ElyRequestedFont != FontSize)
+	{
+		m_ElyLayoutLine = Current;
+		m_ElyLayoutWidth = Area.w;
+		m_ElyLayoutHeight = Area.h;
+		m_ElyRequestedFont = FontSize;
+		m_vElyFlowWords.clear();
+		std::vector<float> vWidths, vGaps;
+		float TotalWidth = 0.0f;
+		for(size_t i = 0; i < Line.m_vWords.size(); ++i)
+		{
+			const auto &Word = Line.m_vWords[i];
+			const std::string Text = Line.m_Text.substr(Word.m_ByteOffset, Word.m_ByteLength);
+			const float Width = CachedTextWidth(pTextRender, Text.c_str(), FontSize);
+			float Gap = 0.0f;
+			if(i > 0)
+			{
+				const auto &Previous = Line.m_vWords[i - 1];
+				const int From = Previous.m_ByteOffset + Previous.m_ByteLength;
+				const std::string Whitespace = Line.m_Text.substr(From, Word.m_ByteOffset - From);
+				Gap = CachedTextWidth(pTextRender, Whitespace.c_str(), FontSize);
+			}
+			vWidths.push_back(Width);
+			vGaps.push_back(Gap);
+			m_vElyFlowWords.push_back({Text, 0, 0, Width});
+			TotalWidth += Gap + Width;
+		}
+
+		size_t Break = Line.m_vWords.size();
+		float WidestRow = TotalWidth;
+		if(TotalWidth > Area.w && Line.m_vWords.size() > 1)
+		{
+			float LeftWidth = 0.0f;
+			for(size_t i = 1; i < Line.m_vWords.size(); ++i)
+			{
+				LeftWidth += vGaps[i - 1] + vWidths[i - 1];
+				const float RightWidth = TotalWidth - LeftWidth - vGaps[i];
+				const float Candidate = std::max(LeftWidth, RightWidth);
+				if(Candidate < WidestRow)
+				{
+					WidestRow = Candidate;
+					Break = i;
+				}
+			}
+		}
+		const int Rows = Break < Line.m_vWords.size() ? 2 : 1;
+		const float Scale = std::min({1.0f, Area.w * 0.98f / std::max(1.0f, WidestRow), Area.h / std::max(1.0f, FontSize * Rows * 1.28f)});
+		m_ElyFlowFontSize = FontSize * Scale;
+		for(int Row = 0; Row < Rows; ++Row)
+		{
+			const size_t First = Row == 0 ? 0 : Break;
+			const size_t Last = Row == 0 ? Break : Line.m_vWords.size();
+			float RowWidth = 0.0f;
+			for(size_t i = First; i < Last; ++i)
+				RowWidth += vWidths[i] + (i > First ? vGaps[i] : 0.0f);
+			float X = (Area.w - RowWidth * Scale) * 0.5f;
+			const float Y = (Area.h - Rows * m_ElyFlowFontSize * 1.28f) * 0.5f + Row * m_ElyFlowFontSize * 1.28f;
+			for(size_t i = First; i < Last; ++i)
+			{
+				if(i > First)
+					X += vGaps[i] * Scale;
+				auto &Word = m_vElyFlowWords[i];
+				Word.m_X = X;
+				Word.m_Y = Y;
+				Word.m_Advance = vWidths[i] * Scale;
+				X += Word.m_Advance;
+			}
+		}
+	}
+
+	int64_t WordPosition = PositionMs;
+	// Plain LRC supplies line times only. Its optional karaoke follows an estimated word schedule.
+	if(!Line.m_HasWordTiming && Current + 1 == (int)m_vLines.size() && m_ClockDurationMs > Line.m_StartMs)
+	{
+		const double Progress = std::clamp((PositionMs - Line.m_StartMs) / (double)(m_ClockDurationMs - Line.m_StartMs), 0.0, 1.0);
+		WordPosition = Line.m_StartMs + (int64_t)((Line.m_vWords.back().m_EndMs - Line.m_StartMs) * Progress);
+	}
+	const bool Karaoke = g_Config.m_ElyLyricsActiveHighlight && (Line.m_HasWordTiming || g_Config.m_ElyLyricsAnimation);
+	int ActiveWord = -1;
+	if(Karaoke)
+	{
+		for(size_t i = 0; i < Line.m_vWords.size(); ++i)
+		{
+			if(WordPosition >= Line.m_vWords[i].m_StartMs && WordPosition < Line.m_vWords[i].m_EndMs)
+			{
+				ActiveWord = i;
+				break;
+			}
+		}
+	}
+	if(ActiveWord != m_ElyCurrentWord)
+	{
+		m_ElyPreviousWord = m_ElyCurrentWord;
+		m_ElyCurrentWord = ActiveWord;
+		m_ElyWordTransition = 0.0f;
+	}
+	const bool Motion = g_Config.m_BcAnimations && !g_Config.m_ElyIslandReducedMotion && g_Config.m_ElyLyricsAnimation;
+	const float Dt = std::clamp(Delta, 0.0f, 0.1f);
+	m_ElyLineTransition = Motion ? std::min(1.0f, m_ElyLineTransition + Dt * 1000.0f / std::max(1, g_Config.m_ElyLyricsTransitionMs)) : 1.0f;
+	m_ElyWordTransition = Motion ? std::min(1.0f, m_ElyWordTransition + Dt / 0.12f) : 1.0f;
+	const float LineT = BCUiAnimations::EaseOutCubic(m_ElyLineTransition);
+	const float WordT = BCUiAnimations::EaseOutCubic(m_ElyWordTransition);
+	const ColorRGBA OldColor = pTextRender->GetTextColor();
+	const ColorRGBA OldOutline = pTextRender->GetTextOutlineColor();
+	pTextRender->TextOutlineColor(0, 0, 0, 0);
+	pUi->ClipEnable(&Area);
+	for(size_t i = 0; i < m_vElyFlowWords.size(); ++i)
+	{
+		const auto &Word = m_vElyFlowWords[i];
+		const float Highlight = (int)i == m_ElyCurrentWord ? WordT : ((int)i == m_ElyPreviousWord ? 1.0f - WordT : 0.0f);
+		const float SizeScale = 0.90f + 0.10f * Highlight;
+		const float Size = m_ElyFlowFontSize * SizeScale;
+		const float X = Area.x + Word.m_X + Word.m_Advance * (1.0f - SizeScale) * 0.5f;
+		const float Y = Area.y + Word.m_Y + (m_ElyFlowFontSize - Size) * 0.5f + (1.0f - LineT) * m_ElyFlowFontSize * 0.08f;
+		CTextCursor Cursor;
+		Cursor.SetPosition(vec2(X, Y));
+		Cursor.m_FontSize = Size;
+		Cursor.m_Flags = TEXTFLAG_RENDER;
+		const float Shade = 0.80f + 0.20f * Highlight;
+		pTextRender->TextColor(Shade, Shade, Shade, Alpha * (0.85f + 0.15f * LineT));
+		pTextRender->TextEx(&Cursor, Word.m_Text.c_str());
+	}
+	pUi->ClipDisable();
+	pTextRender->TextColor(OldColor);
+	pTextRender->TextOutlineColor(OldOutline);
+}
+

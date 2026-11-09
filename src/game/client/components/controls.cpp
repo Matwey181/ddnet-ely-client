@@ -39,6 +39,8 @@ CControls::CControls()
 
 void CControls::OnReset()
 {
+	m_HookAimTarget = m_HookAimConn = -1;
+	m_HookAimTime = 0;
 	ResetInput(0);
 	ResetInput(1);
 
@@ -49,6 +51,7 @@ void CControls::OnReset()
 
 void CControls::ResetInput(int Dummy)
 {
+	m_aInputDebounce[Dummy] = {};
 	m_aLastData[Dummy].m_Direction = 0;
 	// simulate releasing the fire button
 	if((m_aLastData[Dummy].m_Fire & 1) != 0)
@@ -73,6 +76,7 @@ struct CInputState
 {
 	CControls *m_pControls;
 	int *m_apVariables[NUM_DUMMIES];
+	int m_Input;
 };
 
 void CControls::ConKeyInputState(IConsole::IResult *pResult, void *pUserData)
@@ -82,7 +86,22 @@ void CControls::ConKeyInputState(IConsole::IResult *pResult, void *pUserData)
 	if(pState->m_pControls->GameClient()->m_GameInfo.m_BugDDRaceInput && pState->m_pControls->GameClient()->m_Snap.m_SpecInfo.m_Active)
 		return;
 
-	*pState->m_apVariables[g_Config.m_ClDummy] = pResult->GetInteger(0);
+	int *pVariable = pState->m_apVariables[g_Config.m_ClDummy];
+	const int Value = pResult->GetInteger(0);
+	if(!Value && *pVariable && g_Config.m_BcInputDebounce && pState->m_Input >= 0)
+		pState->m_pControls->InputDebounce(g_Config.m_ClDummy, pState->m_Input);
+	*pVariable = Value;
+}
+
+void CControls::InputDebounce(int Dummy, int Input)
+{
+	switch(Input)
+	{
+	case INPUT_LEFT: if(m_aLastData[Dummy].m_Direction != -1) m_aInputDebounce[Dummy].m_Direction = -1; break;
+	case INPUT_RIGHT: if(m_aLastData[Dummy].m_Direction != 1) m_aInputDebounce[Dummy].m_Direction = 1; break;
+	case INPUT_JUMP: m_aInputDebounce[Dummy].m_Jump = m_aLastData[Dummy].m_Jump ? -1 : 1; break;
+	case INPUT_HOOK: m_aInputDebounce[Dummy].m_Hook = m_aLastData[Dummy].m_Hook ? -1 : 1; break;
+	}
 }
 
 void CControls::ConKeyInputCounter(IConsole::IResult *pResult, void *pUserData)
@@ -127,29 +146,37 @@ void CControls::ConKeyInputNextPrevWeapon(IConsole::IResult *pResult, void *pUse
 
 void CControls::OnConsoleInit()
 {
+	const auto OpenAimbot = [](IConsole::IResult *, void *pUser) {
+		static_cast<CControls *>(pUser)->GameClient()->m_Menus.OpenHookAimSettings();
+	};
+	Console()->Register("bc_aimbot_settings", "", CFGFLAG_CLIENT, OpenAimbot, this, "Open the Aimbot settings tab");
+	Console()->Register("bc_hook_aim_settings", "", CFGFLAG_CLIENT, OpenAimbot, this, "Open the Aimbot settings tab");
+	Console()->Register("bc_aimbot_toggle", "", CFGFLAG_CLIENT, [](IConsole::IResult *, void *pUser) {
+		static_cast<CControls *>(pUser)->ToggleHookAim();
+	}, this, "Toggle the aimbot");
 	// game commands
 	{
-		static CInputState s_State = {this, {&m_aInputDirectionLeft[0], &m_aInputDirectionLeft[1]}};
+		static CInputState s_State = {this, {&m_aInputDirectionLeft[0], &m_aInputDirectionLeft[1]}, INPUT_LEFT};
 		Console()->Register("+left", "", CFGFLAG_CLIENT, ConKeyInputState, &s_State, "Move left");
 	}
 	{
-		static CInputState s_State = {this, {&m_aInputDirectionRight[0], &m_aInputDirectionRight[1]}};
+		static CInputState s_State = {this, {&m_aInputDirectionRight[0], &m_aInputDirectionRight[1]}, INPUT_RIGHT};
 		Console()->Register("+right", "", CFGFLAG_CLIENT, ConKeyInputState, &s_State, "Move right");
 	}
 	{
-		static CInputState s_State = {this, {&m_aInputData[0].m_Jump, &m_aInputData[1].m_Jump}};
+		static CInputState s_State = {this, {&m_aInputData[0].m_Jump, &m_aInputData[1].m_Jump}, INPUT_JUMP};
 		Console()->Register("+jump", "", CFGFLAG_CLIENT, ConKeyInputState, &s_State, "Jump");
 	}
 	{
-		static CInputState s_State = {this, {&m_aInputData[0].m_Hook, &m_aInputData[1].m_Hook}};
+		static CInputState s_State = {this, {&m_aInputData[0].m_Hook, &m_aInputData[1].m_Hook}, INPUT_HOOK};
 		Console()->Register("+hook", "", CFGFLAG_CLIENT, ConKeyInputState, &s_State, "Hook");
 	}
 	{
-		static CInputState s_State = {this, {&m_aInputData[0].m_Fire, &m_aInputData[1].m_Fire}};
+		static CInputState s_State = {this, {&m_aInputData[0].m_Fire, &m_aInputData[1].m_Fire}, -1};
 		Console()->Register("+fire", "", CFGFLAG_CLIENT, ConKeyInputCounter, &s_State, "Fire");
 	}
 	{
-		static CInputState s_State = {this, {&m_aShowHookColl[0], &m_aShowHookColl[1]}};
+		static CInputState s_State = {this, {&m_aShowHookColl[0], &m_aShowHookColl[1]}, -1};
 		Console()->Register("+showhookcoll", "", CFGFLAG_CLIENT, ConKeyInputState, &s_State, "Show Hook Collision");
 	}
 
@@ -198,6 +225,9 @@ void CControls::OnMessage(int Msg, void *pRawMsg)
 
 int CControls::SnapInput(int *pData)
 {
+	const int UnlatchedJump = m_aInputData[g_Config.m_ClDummy].m_Jump;
+	const int UnlatchedHook = m_aInputData[g_Config.m_ClDummy].m_Hook;
+
 	// bestclient
 	GameClient()->m_BestClient.UpdateGoresMode();
 	// bestclient
@@ -358,27 +388,29 @@ int CControls::SnapInput(int *pData)
 	}
 	else
 	{
-		// TClient
-		vec2 Pos;
-		if(g_Config.m_ClSubTickAiming && m_aMousePosOnAction[g_Config.m_ClDummy] != vec2(0.0f, 0.0f))
+		const CInputDebounceState &DebounceState = m_aInputDebounce[g_Config.m_ClDummy];
+		if(DebounceState.m_Hook)
+			m_aInputData[g_Config.m_ClDummy].m_Hook = DebounceState.m_Hook > 0;
+		// Keep the first hook packet and fast prediction on the same aim vector.
+		if(!ApplyHookAimInput(m_aInputData[g_Config.m_ClDummy]))
 		{
-			Pos = GameClient()->m_Controls.m_aMousePosOnAction[g_Config.m_ClDummy];
-			m_aMousePosOnAction[g_Config.m_ClDummy] = vec2(0.0f, 0.0f);
-		}
-		else
-			Pos = GameClient()->m_Controls.m_aMousePos[g_Config.m_ClDummy];
+			vec2 Pos = m_aMousePos[g_Config.m_ClDummy];
+			if(g_Config.m_ClSubTickAiming && m_aMousePosOnAction[g_Config.m_ClDummy] != vec2(0.0f, 0.0f))
+				Pos = m_aMousePosOnAction[g_Config.m_ClDummy];
 
+			if(g_Config.m_TcScaleMouseDistance && !GameClient()->m_Snap.m_SpecInfo.m_Active)
+			{
+				const int MaxDistance = g_Config.m_ClDyncam ? g_Config.m_ClDyncamMaxDistance : g_Config.m_ClMouseMaxDistance;
+				if(MaxDistance > 5 && MaxDistance < 1000) // Don't scale if angle bind or reduces precision
+					Pos *= 1000.0f / (float)MaxDistance;
+			}
+			m_aInputData[g_Config.m_ClDummy].m_TargetX = (int)Pos.x;
+			m_aInputData[g_Config.m_ClDummy].m_TargetY = (int)Pos.y;
+		}
+
+		m_aMousePosOnAction[g_Config.m_ClDummy] = vec2(0.0f, 0.0f);
 		m_FastInputHookAction = false;
 		m_FastInputFireAction = false;
-
-		if(g_Config.m_TcScaleMouseDistance && !GameClient()->m_Snap.m_SpecInfo.m_Active)
-		{
-			const int MaxDistance = g_Config.m_ClDyncam ? g_Config.m_ClDyncamMaxDistance : g_Config.m_ClMouseMaxDistance;
-			if(MaxDistance > 5 && MaxDistance < 1000) // Don't scale if angle bind or reduces precision
-				Pos *= 1000.0f / (float)MaxDistance;
-		}
-		m_aInputData[g_Config.m_ClDummy].m_TargetX = (int)Pos.x;
-		m_aInputData[g_Config.m_ClDummy].m_TargetY = (int)Pos.y;
 
 		if(!m_aInputData[g_Config.m_ClDummy].m_TargetX && !m_aInputData[g_Config.m_ClDummy].m_TargetY)
 			m_aInputData[g_Config.m_ClDummy].m_TargetX = 1;
@@ -388,6 +420,10 @@ int CControls::SnapInput(int *pData)
 		const bool LeftPressed = m_aInputDirectionLeft[g_Config.m_ClDummy] != 0;
 		const bool RightPressed = m_aInputDirectionRight[g_Config.m_ClDummy] != 0;
 		m_aInputData[g_Config.m_ClDummy].m_Direction = GameClient()->m_SnapTap.ResolveMovementDirection(g_Config.m_ClDummy, LeftPressed, RightPressed, true);
+		if(m_aInputData[g_Config.m_ClDummy].m_Direction == 0 && DebounceState.m_Direction)
+			m_aInputData[g_Config.m_ClDummy].m_Direction = DebounceState.m_Direction;
+		if(DebounceState.m_Jump)
+			m_aInputData[g_Config.m_ClDummy].m_Jump = DebounceState.m_Jump > 0;
 		// bestclient
 
 		// dummy copy moves
@@ -560,7 +596,14 @@ int CControls::SnapInput(int *pData)
 	m_aLastData[g_Config.m_ClDummy] = m_aInputData[g_Config.m_ClDummy];
 
 	if(!Send)
+	{
+		if(m_aInputDebounce[g_Config.m_ClDummy].m_Jump)
+			m_aInputData[g_Config.m_ClDummy].m_Jump = UnlatchedJump;
+		if(m_aInputDebounce[g_Config.m_ClDummy].m_Hook)
+			m_aInputData[g_Config.m_ClDummy].m_Hook = UnlatchedHook;
+		m_aInputDebounce[g_Config.m_ClDummy] = {};
 		return 0;
+	}
 
 	// v1.56.169 BUG7: BAF.ApplyOverride MUST run before the laserAimActive
 	// check below. BAF silent sets m_LaserUnfreezeAimActive (same channel as
@@ -847,6 +890,11 @@ int CControls::SnapInput(int *pData)
 		s_HaveLastFake = true;
 	}
 
+	if(m_aInputDebounce[g_Config.m_ClDummy].m_Jump)
+		m_aInputData[g_Config.m_ClDummy].m_Jump = UnlatchedJump;
+	if(m_aInputDebounce[g_Config.m_ClDummy].m_Hook)
+		m_aInputData[g_Config.m_ClDummy].m_Hook = UnlatchedHook;
+	m_aInputDebounce[g_Config.m_ClDummy] = {};
 	return sizeof(m_aInputData[0]);
 }
 
@@ -1006,6 +1054,10 @@ bool CControls::CheckNewInput()
 		const bool LeftPressed = m_aInputDirectionLeft[g_Config.m_ClDummy] != 0;
 		const bool RightPressed = m_aInputDirectionRight[g_Config.m_ClDummy] != 0;
 		TestInput.m_Direction = GameClient()->m_SnapTap.ResolveMovementDirection(g_Config.m_ClDummy, LeftPressed, RightPressed, false);
+		const CInputDebounceState &DebounceState = m_aInputDebounce[g_Config.m_ClDummy];
+		if(TestInput.m_Direction == 0 && DebounceState.m_Direction) TestInput.m_Direction = DebounceState.m_Direction;
+		if(DebounceState.m_Jump) TestInput.m_Jump = DebounceState.m_Jump > 0;
+		if(DebounceState.m_Hook) TestInput.m_Hook = DebounceState.m_Hook > 0;
 
 		bool NewInput = false;
 		if(m_aFastInput[g_Config.m_ClDummy].m_Direction != TestInput.m_Direction)
@@ -1023,7 +1075,13 @@ bool CControls::CheckNewInput()
 		if(m_aFastInput[g_Config.m_ClDummy].m_WantedWeapon != TestInput.m_WantedWeapon)
 			NewInput = true;
 
-		if(g_Config.m_ClSubTickAiming)
+		if(ApplyHookAimInput(TestInput))
+		{
+			if(TestInput.m_Hook && !m_aLastData[g_Config.m_ClDummy].m_Hook &&
+				(TestInput.m_TargetX != m_aFastInput[g_Config.m_ClDummy].m_TargetX || TestInput.m_TargetY != m_aFastInput[g_Config.m_ClDummy].m_TargetY))
+				NewInput = true;
+		}
+		else if(g_Config.m_ClSubTickAiming)
 		{
 			TestInput.m_TargetX = (int)m_aMousePos[g_Config.m_ClDummy].x;
 			TestInput.m_TargetY = (int)m_aMousePos[g_Config.m_ClDummy].y;
@@ -1044,6 +1102,10 @@ bool CControls::CheckNewInput()
 			const bool LeftPressed = m_aInputDirectionLeft[Dummy] != 0;
 			const bool RightPressed = m_aInputDirectionRight[Dummy] != 0;
 			TestInput.m_Direction = GameClient()->m_SnapTap.ResolveMovementDirection(Dummy, LeftPressed, RightPressed, false);
+			const CInputDebounceState &DebounceState = m_aInputDebounce[Dummy];
+			if(TestInput.m_Direction == 0 && DebounceState.m_Direction) TestInput.m_Direction = DebounceState.m_Direction;
+			if(DebounceState.m_Jump) TestInput.m_Jump = DebounceState.m_Jump > 0;
+			if(DebounceState.m_Hook) TestInput.m_Hook = DebounceState.m_Hook > 0;
 			// bestclient
 		}
 
@@ -1087,18 +1149,15 @@ bool CControls::CheckNewInput()
 			}
 		}
 
-		if(SetMousePos)
+		const bool UseAimbot = Dummy == g_Config.m_ClDummy && ApplyHookAimInput(TestInput);
+		if(!UseAimbot)
 		{
-			TestInput.m_TargetX = (int)m_aMousePos[Dummy].x;
-			TestInput.m_TargetY = (int)m_aMousePos[Dummy].y;
-			if(RefreshHookAim && (TestInput.m_TargetX != m_aFastInput[Dummy].m_TargetX || TestInput.m_TargetY != m_aFastInput[Dummy].m_TargetY))
-				NewInput[Dummy] = true;
+			TestInput.m_TargetX = SetMousePos ? (int)m_aMousePos[Dummy].x : m_aFastInput[Dummy].m_TargetX;
+			TestInput.m_TargetY = SetMousePos ? (int)m_aMousePos[Dummy].y : m_aFastInput[Dummy].m_TargetY;
 		}
-		else
-		{
-			TestInput.m_TargetX = m_aFastInput[Dummy].m_TargetX;
-			TestInput.m_TargetY = m_aFastInput[Dummy].m_TargetY;
-		}
+		if((RefreshHookAim || (UseAimbot && TestInput.m_Hook && !m_aLastData[Dummy].m_Hook)) &&
+			(TestInput.m_TargetX != m_aFastInput[Dummy].m_TargetX || TestInput.m_TargetY != m_aFastInput[Dummy].m_TargetY))
+			NewInput[Dummy] = true;
 
 		m_aFastInput[Dummy] = TestInput;
 	}

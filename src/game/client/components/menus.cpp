@@ -364,6 +364,43 @@ int CMenus::DoButton_Favorite(const void *pButtonId, const void *pParentId, bool
 
 int CMenus::DoButton_CheckBox_Common(const void *pId, const char *pText, const char *pBoxText, const CUIRect *pRect, const unsigned Flags)
 {
+	if(BestClientUiTheme::IsElySettingsScope())
+	{
+		const bool Checked = *pBoxText == 'X';
+		const float Rounding = std::min(14.0f, pRect->h * 0.34f);
+		pRect->Draw(ColorRGBA(0.20f, 0.20f, 0.22f, 0.75f), IGraphics::CORNER_ALL, Rounding);
+		CUIRect Inner = *pRect;
+		Inner.Margin(0.6f, &Inner);
+		Inner.Draw(ColorRGBA(0.075f, 0.075f, 0.085f, 0.95f), IGraphics::CORNER_ALL, std::max(0.0f, Rounding - 0.6f));
+		CUIRect Box, Label = *pRect;
+		Label.VSplitLeft(pRect->h * 0.38f, nullptr, &Label);
+		Label.VSplitLeft(pRect->h * 0.48f, &Box, &Label);
+		Label.VSplitLeft(pRect->h * 0.38f, nullptr, &Label);
+		Box.HMargin(pRect->h * 0.26f, &Box);
+		Box.Draw(Checked ? ColorRGBA(0.96f, 0.96f, 0.97f, 1) : ColorRGBA(0.40f, 0.40f, 0.44f, 0.75f), IGraphics::CORNER_ALL, 3.0f);
+		if(!Checked)
+		{
+			CUIRect Fill = Box;
+			Fill.Margin(0.8f, &Fill);
+			Fill.Draw(ColorRGBA(0.055f, 0.055f, 0.064f, 1), IGraphics::CORNER_ALL, 2.5f);
+		}
+		TextRender()->TextColor(Checked ? ColorRGBA(0.045f, 0.045f, 0.05f, 1) : ColorRGBA(0.95f, 0.95f, 0.96f, 1));
+		if(Checked)
+		{
+			TextRender()->SetFontPreset(EFontPreset::ICON_FONT);
+			Ui()->DoLabel(&Box, "\uF00C", Box.h * 0.76f, TEXTALIGN_MC);
+			TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
+		}
+		else if(*pBoxText)
+			Ui()->DoLabel(&Box, pBoxText, Box.h * 0.68f, TEXTALIGN_MC);
+		TextRender()->TextColor(0.96f, 0.96f, 0.97f, 1);
+		SLabelProperties Props;
+		Props.m_MaxWidth = Label.w;
+		Props.m_EllipsisAtEnd = true;
+		Ui()->DoLabel(&Label, pText, std::min(pRect->h * 0.45f, 13.5f), TEXTALIGN_ML, Props);
+		BestClientSettingsSearch::DrawItemHighlight(pId, pRect);
+		return Ui()->DoButtonLogic(pId, 0, pRect, Flags);
+	}
 	CUIRect Box, Label;
 	pRect->VSplitLeft(pRect->h, &Box, &Label);
 	Label.VSplitLeft(5.0f, nullptr, &Label);
@@ -750,45 +787,8 @@ void CMenus::RenderMenubar(CUIRect Box, IClient::EClientState ClientState)
 		TextRender()->SetRenderFlags(0);
 		TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
 
-		// online menus
-		Box.VSplitLeft(90.0f, &Button, &Box);
-		static CButtonContainer s_GameButton;
-		if(DoButton_MenuTab(&s_GameButton, Localize("Game"), ActivePage == PAGE_GAME, &Button, IGraphics::CORNER_TL))
-			NewPage = PAGE_GAME;
 
-		Box.VSplitLeft(90.0f, &Button, &Box);
-		static CButtonContainer s_PlayersButton;
-		if(DoButton_MenuTab(&s_PlayersButton, Localize("Players"), ActivePage == PAGE_PLAYERS, &Button, IGraphics::CORNER_NONE))
-			NewPage = PAGE_PLAYERS;
-
-		Box.VSplitLeft(130.0f, &Button, &Box);
-		static CButtonContainer s_ServerInfoButton;
-		if(DoButton_MenuTab(&s_ServerInfoButton, Localize("Server info"), ActivePage == PAGE_SERVER_INFO, &Button, IGraphics::CORNER_NONE))
-			NewPage = PAGE_SERVER_INFO;
-
-		Box.VSplitLeft(90.0f, &Button, &Box);
-		static CButtonContainer s_NetworkButton;
-		if(DoButton_MenuTab(&s_NetworkButton, Localize("Browser"), ActivePage == PAGE_NETWORK, &Button, IGraphics::CORNER_NONE))
-			NewPage = PAGE_NETWORK;
-
-		if(GameClient()->m_GameInfo.m_Race)
-		{
-			Box.VSplitLeft(90.0f, &Button, &Box);
-			static CButtonContainer s_GhostButton;
-			if(DoButton_MenuTab(&s_GhostButton, Localize("Ghost"), ActivePage == PAGE_GHOST, &Button, IGraphics::CORNER_NONE))
-				NewPage = PAGE_GHOST;
-		}
-
-		Box.VSplitLeft(100.0f, &Button, &Box);
-		Box.VSplitLeft(4.0f, nullptr, &Box);
-		static CButtonContainer s_CallVoteButton;
-		if(DoButton_MenuTab(&s_CallVoteButton, Localize("Call vote"), ActivePage == PAGE_CALLVOTE, &Button, IGraphics::CORNER_TR))
-		{
-			NewPage = PAGE_CALLVOTE;
-			m_ControlPageOpening = true;
-		}
-
-		if(Box.w >= 10.0f + 33.0f + 10.0f)
+		if(Box.w >= 53.0f)
 		{
 			TextRender()->SetFontPreset(EFontPreset::ICON_FONT);
 			TextRender()->SetRenderFlags(ETextRenderFlags::TEXT_RENDER_FLAG_ONLY_ADVANCE_WIDTH | ETextRenderFlags::TEXT_RENDER_FLAG_NO_X_BEARING | ETextRenderFlags::TEXT_RENDER_FLAG_NO_Y_BEARING | ETextRenderFlags::TEXT_RENDER_FLAG_NO_PIXEL_ALIGNMENT | ETextRenderFlags::TEXT_RENDER_FLAG_NO_OVERSIZE);
@@ -806,6 +806,47 @@ void CMenus::RenderMenubar(CUIRect Box, IClient::EClientState ClientState)
 			TextRender()->SetRenderFlags(0);
 			TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
 		}
+		// All gameplay tabs share the remaining width at smaller window sizes.
+		const float TabsWidth = GameClient()->m_GameInfo.m_Race ? 594.0f : 504.0f;
+		const float TabScale = std::min(1.0f, Box.w / TabsWidth);
+		// online menus
+		Box.VSplitLeft(90.0f * TabScale, &Button, &Box);
+		static CButtonContainer s_GameButton;
+		if(DoButton_MenuTab(&s_GameButton, Localize("Game"), ActivePage == PAGE_GAME, &Button, IGraphics::CORNER_TL))
+			NewPage = PAGE_GAME;
+
+		Box.VSplitLeft(90.0f * TabScale, &Button, &Box);
+		static CButtonContainer s_PlayersButton;
+		if(DoButton_MenuTab(&s_PlayersButton, Localize("Players"), ActivePage == PAGE_PLAYERS, &Button, IGraphics::CORNER_NONE))
+			NewPage = PAGE_PLAYERS;
+
+		Box.VSplitLeft(130.0f * TabScale, &Button, &Box);
+		static CButtonContainer s_ServerInfoButton;
+		if(DoButton_MenuTab(&s_ServerInfoButton, Localize("Server info"), ActivePage == PAGE_SERVER_INFO, &Button, IGraphics::CORNER_NONE))
+			NewPage = PAGE_SERVER_INFO;
+
+		Box.VSplitLeft(90.0f * TabScale, &Button, &Box);
+		static CButtonContainer s_NetworkButton;
+		if(DoButton_MenuTab(&s_NetworkButton, Localize("Browser"), ActivePage == PAGE_NETWORK, &Button, IGraphics::CORNER_NONE))
+			NewPage = PAGE_NETWORK;
+
+		if(GameClient()->m_GameInfo.m_Race)
+		{
+			Box.VSplitLeft(90.0f * TabScale, &Button, &Box);
+			static CButtonContainer s_GhostButton;
+			if(DoButton_MenuTab(&s_GhostButton, Localize("Ghost"), ActivePage == PAGE_GHOST, &Button, IGraphics::CORNER_NONE))
+				NewPage = PAGE_GHOST;
+		}
+
+		Box.VSplitLeft(100.0f * TabScale, &Button, &Box);
+		Box.VSplitLeft(4.0f * TabScale, nullptr, &Box);
+		static CButtonContainer s_CallVoteButton;
+		if(DoButton_MenuTab(&s_CallVoteButton, Localize("Call vote"), ActivePage == PAGE_CALLVOTE, &Button, IGraphics::CORNER_TR))
+		{
+			NewPage = PAGE_CALLVOTE;
+			m_ControlPageOpening = true;
+		}
+
 	}
 
 	// bestclient
@@ -1173,6 +1214,9 @@ void CMenus::Render()
 	// Determine the client state once before rendering because it can change
 	// while rendering which causes frames with broken user interface.
 	const IClient::EClientState ClientState = Client()->State();
+	const bool ShowElyStart = IsMainMenuOpen();
+	const bool ShowElySettings = ClientState == IClient::STATE_OFFLINE && !m_ShowStart && m_MenuPage == PAGE_SETTINGS && m_Popup == POPUP_NONE;
+	static_cast<IEngineGraphics *>(Graphics())->SetElyStartScreen(ShowElyStart || ShowElySettings);
 
 	if(ClientState == IClient::STATE_ONLINE || ClientState == IClient::STATE_DEMOPLAYBACK)
 	{
@@ -1183,14 +1227,15 @@ void CMenus::Render()
 	else
 	{
 		// bestclient
-		const float MediaScreenHeight = 300.0f;
-		const float MediaScreenWidth = MediaScreenHeight * Graphics()->ScreenAspect();
-		CMenuMediaBackground &MediaBackground = GameClient()->m_BestClient.MenuMediaBackground();
-		MediaBackground.SyncFromConfig(g_Config.m_BcMenuMediaBackground, g_Config.m_BcMenuMediaBackgroundPath);
-		MediaBackground.Update();
-		if(!MediaBackground.Render(MediaScreenWidth, MediaScreenHeight) && !GameClient()->m_MenuBackground.Render())
+		if(!ShowElyStart && !ShowElySettings)
 		{
-			RenderBackground();
+			const float MediaScreenHeight = 300.0f;
+			const float MediaScreenWidth = MediaScreenHeight * Graphics()->ScreenAspect();
+			CMenuMediaBackground &MediaBackground = GameClient()->m_BestClient.MenuMediaBackground();
+			MediaBackground.SyncFromConfig(g_Config.m_BcMenuMediaBackground, g_Config.m_BcMenuMediaBackgroundPath);
+			MediaBackground.Update();
+			if(!MediaBackground.Render(MediaScreenWidth, MediaScreenHeight) && !GameClient()->m_MenuBackground.Render())
+				RenderBackground();
 		}
 		// bestclient
 		ms_ColorTabbarInactive = ms_ColorTabbarInactiveOutgame;
@@ -1226,7 +1271,7 @@ void CMenus::Render()
 		}
 		else if(m_ShowStart)
 		{
-			m_MenusStart.RenderStartMenu(Screen);
+			m_MenusStart.RenderStartMenu(*Ui()->Screen());
 		}
 		else
 		{
@@ -1247,7 +1292,7 @@ void CMenus::Render()
 			}
 			else if(m_MenuPage == PAGE_SETTINGS)
 			{
-				RenderSettings(MainView);
+				RenderSettings(*Ui()->Screen());
 			}
 			else
 			{
@@ -1258,7 +1303,7 @@ void CMenus::Render()
 			const bool AssetsEditorConfirmOpen = m_AssetsEditorState.m_Open &&
 				m_AssetsEditorState.m_ExploreSide < 0 && m_AssetsEditorState.m_ShowExitConfirm &&
 				g_Config.m_UiSettingsPage == SETTINGS_ASSETS;
-			if(!AssetsEditorConfirmOpen)
+			if(!AssetsEditorConfirmOpen && m_MenuPage != PAGE_SETTINGS)
 			// bestclient
 				RenderMenubar(TabBar, ClientState);
 		}
@@ -1335,6 +1380,22 @@ void CMenus::Render()
 			RenderDemoPlayer(Screen);
 		}
 		break;
+	}
+
+	// Incoming browser and demo pages share the short reveal used by the Ely screens.
+	static int s_LastElyPage = -100;
+	static float s_ElyPageReveal = 1.0f;
+	const int Page = ClientState == IClient::STATE_OFFLINE ? (m_ShowStart ? -1 : m_MenuPage) : m_GamePage + 100;
+	if(Page != s_LastElyPage)
+	{
+		s_LastElyPage = Page;
+		s_ElyPageReveal = 0.0f;
+	}
+	s_ElyPageReveal = g_Config.m_BcAnimations ? std::min(1.0f, s_ElyPageReveal + Client()->RenderFrameTime() / 0.16f) : 1.0f;
+	if(ClientState == IClient::STATE_OFFLINE && !m_ShowStart && m_MenuPage != PAGE_SETTINGS && m_Popup == POPUP_NONE && s_ElyPageReveal < 1.0f)
+	{
+		const float Remaining = 1.0f - s_ElyPageReveal;
+		Ui()->Screen()->Draw(ColorRGBA(0.035f, 0.031f, 0.043f, Remaining * Remaining * 0.92f), IGraphics::CORNER_NONE, 0);
 	}
 
 	Ui()->RenderPopupMenus();
@@ -2523,6 +2584,7 @@ void CMenus::SetActive(bool Active)
 
 void CMenus::OnShutdown()
 {
+	m_MenusStart.UnloadElyAssets();
 	m_CommunityIcons.Shutdown();
 	// bestclient
 	m_ServerMapPreview.Clear();
@@ -2610,6 +2672,7 @@ void CMenus::OnStateChange(int NewState, int OldState)
 void CMenus::OnWindowResize()
 {
 	TextRender()->DeleteTextContainer(m_MotdTextContainerIndex);
+	m_MenusStart.ClearElyLabels();
 }
 
 void CMenus::OnRender()
@@ -2634,6 +2697,8 @@ void CMenus::OnRender()
 	{
 		if(Ui()->ConsumeHotkey(CUi::HOTKEY_ESCAPE))
 		{
+			if(Client()->State() == IClient::STATE_ONLINE)
+				m_GamePage = PAGE_GAME;
 			SetActive(true);
 		}
 		// bestclient
