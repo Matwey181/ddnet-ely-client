@@ -1001,7 +1001,6 @@ elseif(TARGET_OS STREQUAL "ios")
     src/ios/ios_file_picker.mm
     src/ios/ios_music.mm
     src/ios/ios_performance.mm
-    src/ios/ios_voice_audio.cpp
     src/ios/ios_media.mm
   )
   set(PLATFORM_CLIENT_LIBS
@@ -3046,9 +3045,6 @@ if(CLIENT)
     components/bestclient/clientindicator/presence_cache.cpp
     components/bestclient/clientindicator/presence_cache.h
     components/bestclient/clientindicator/protocol.h
-    components/bestclient/voice/protocol.h
-    components/bestclient/voice/voice.cpp
-    components/bestclient/voice/voice.h
     components/bestclient/spec_pause_radio.cpp
     components/bestclient/spec_pause_radio.h
     components/bestclient/chat_bubbles.cpp

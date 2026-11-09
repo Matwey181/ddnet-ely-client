@@ -1456,8 +1456,7 @@ void CNamePlates::RenderNamePlateGame(vec2 Position, const CNetObj_PlayerInfo *p
 	Data.m_IsUserDeveloperIndicator = Data.m_ShowBClientIndicator && GameClient()->m_ClientIndicator.IsPlayerDeveloper(pPlayerInfo->m_ClientId);
 	Data.m_IsUserFakeIndicator = Data.m_ShowBClientIndicator && GameClient()->m_ClientIndicator.IsPlayerFakeVersion(pPlayerInfo->m_ClientId);
 	Data.m_IsUserLightIndicator = Data.m_ShowBClientIndicator && GameClient()->m_ClientIndicator.IsPlayerLightEdition(pPlayerInfo->m_ClientId);
-	Data.m_ShowVoiceTalking = g_Config.m_BcVoiceChatNameplateIcon != 0 &&
-				  GameClient()->m_VoiceChat.IsClientTalking(pPlayerInfo->m_ClientId);
+	Data.m_ShowVoiceTalking = false;
 	Data.m_ShowBClientVersion = false;
 	Data.m_FontSizeBClientVersion = 0.0f;
 	Data.m_aBClientVersion[0] = '\0';
@@ -1614,7 +1613,7 @@ void CNamePlates::RenderNamePlatePreview(vec2 Position, int Dummy)
 	Data.m_IsUserDeveloperIndicator = false;
 	Data.m_IsUserFakeIndicator = false;
 	Data.m_IsUserLightIndicator = false;
-	Data.m_ShowVoiceTalking = g_Config.m_BcVoiceChatNameplateIcon != 0;
+	Data.m_ShowVoiceTalking = false;
 	Data.m_ShowBClientVersion = false;
 	Data.m_FontSizeBClientVersion = std::max(10.0f, FontSize * 0.75f);
 	Data.m_aBClientVersion[0] = '\0';

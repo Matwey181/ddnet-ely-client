@@ -24,5 +24,7 @@
     "ios_voice_ring.h": "dd8e0078cf5e170652b632ac1351dc1dc7fe70bc8eb145b6d2636de527f06042",
     "ios_voice_audio.cpp": "a2f9559effa4bdc16608d7333fe989dccf93b95ecfa46358a9abe4b6cf55849f",
     "ios_voice_audio.h": "be37488e80bc3b29b3e9c8afd6df8092d3190f7e23db6aa679fbede844851442"
-  }
+  },
+  "voice_chat_removed": true,
+  "voice_removal_sha256": "fed58b9e27fc99db154fcf573a16cf4ee2b8c48ade1ee0317f79de1908659a5d"
 }

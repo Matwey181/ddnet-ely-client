@@ -1535,6 +1535,12 @@ bool CTouchControls::ParseConfiguration(const void *pFileData, unsigned FileLeng
 	vParsedTouchButtons.reserve(TouchButtons.u.array.length);
 	for(unsigned ButtonIndex = 0; ButtonIndex < TouchButtons.u.array.length; ++ButtonIndex)
 	{
+		const json_value &VoiceCommand = TouchButtons[ButtonIndex]["behavior"]["command"];
+		if(VoiceCommand.type == json_string &&
+			(str_comp(VoiceCommand.u.string.ptr, "+voicechat") == 0 ||
+			 str_comp(VoiceCommand.u.string.ptr, "toggle_voice_mic_mute") == 0 ||
+			 str_comp(VoiceCommand.u.string.ptr, "toggle_voice_headphones_mute") == 0))
+			continue;
 		std::optional<CTouchButton> ParsedButton = ParseButton(&TouchButtons[ButtonIndex]);
 		if(!ParsedButton.has_value())
 		{

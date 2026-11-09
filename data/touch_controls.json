@@ -309,22 +309,6 @@
 			}
 		},
 		{
-			"x": 550000,
-			"y": 16667,
-			"w": 83333,
-			"h": 83333,
-			"shape": "rect",
-			"visibilities": [
-				"ingame"
-			],
-			"behavior": {
-				"type": "bind",
-				"label": "PTT",
-				"label-type": "plain",
-				"command": "+voicechat"
-			}
-		},
-		{
 			"x": 650000,
 			"y": 16667,
 			"w": 83333,

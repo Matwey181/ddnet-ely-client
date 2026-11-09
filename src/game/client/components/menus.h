@@ -693,11 +693,6 @@ protected:
 	// bestclient
 	static float FrozenSkinSettingsHeight();
 	void RenderFrozenSkinSettings(CUIRect &View);
-	struct SPopupVoiceModerationContext
-	{
-		CMenus *m_pMenus;
-	};
-	static CUi::EPopupMenuFunctionResult PopupVoiceModeration(void *pContext, CUIRect View, bool Active);
 	// bestclient
 
 	// found in menus_settings_tee.cpp

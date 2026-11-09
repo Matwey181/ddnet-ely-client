@@ -2463,8 +2463,6 @@ void CHud::OnRender()
 			RenderConnectionWarning();
 		RenderTeambalanceWarning();
 		// bestclient
-		GameClient()->m_VoiceChat.RenderHudMuteStatusIndicator(m_Width, m_Height);
-		GameClient()->m_VoiceChat.RenderHudTalkingIndicator(m_Width, m_Height);
 		// bestclient
 		if(g_Config.m_ClShowRecord)
 			RenderRecord();

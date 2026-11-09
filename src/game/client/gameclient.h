@@ -71,7 +71,6 @@
 #include "components/bestclient/spec_pause_radio.h" // bestclient
 #include "components/bestclient/twitch_chat.h" // bestclient
 #include "components/bestclient/ui_animations.h" // bestclient
-#include "components/bestclient/voice/voice.h" // bestclient
 // bestclient
 #include "components/bestclient/translate.h" // bestclient
 // bestclient
@@ -252,7 +251,6 @@ public:
 	CSpecPauseRadio m_SpecPauseRadio; // bestclient
 	CShowPoints m_ShowPoints; // bestclient
 	CClientIndicator m_ClientIndicator; // bestclient
-	CVoiceChat m_VoiceChat; // bestclient
 	CAdminPanel m_AdminPanel; // bestclient
 	CAspectRatio m_AspectRatio; // bestclient
 	C3DParticles m_3DParticles; // bestclient

@@ -237,7 +237,6 @@
 
 	{"Focus Mode", SETTINGS_NAV_LEAF_BC_OTHERS, "Others", &g_Config.m_ClFocusMode, nullptr},
 
-	{"Voice", SETTINGS_NAV_LEAF_BC_OTHERS, "Others", &g_Config.m_BcVoiceChatEnable, nullptr},
 
 	{"Client Indicator", SETTINGS_NAV_LEAF_BC_OTHERS, "Others", &g_Config.m_BcClientIndicatorInNamePlate, nullptr},
 	{"Show indicator in scoreboard", SETTINGS_NAV_LEAF_BC_OTHERS, "Client Indicator", &g_Config.m_BcClientIndicatorInScoreboard, nullptr},

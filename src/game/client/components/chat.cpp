@@ -2048,8 +2048,6 @@ void CChat::SendChat(int Team, const char *pLine)
 	// bestclient
 	if(GameClient()->m_FastPractice.ConsumePracticeChatCommand(Team, pLine))
 		return;
-	if(GameClient()->m_VoiceChat.TryHandleChatCommand(pLine))
-		return;
 	// bestclient
 
 	m_LastChatSend = time();

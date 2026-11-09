@@ -45,8 +45,6 @@
 		<string>DDNet uses Bluetooth to connect wireless game controllers.</string>
 		<key>NSAppleMusicUsageDescription</key>
 		<string>Ely Client displays your Apple Music track and playback controls in the music HUD when you allow access.</string>
-		<key>NSMicrophoneUsageDescription</key>
-		<string>Ely Client uses the microphone for BestClient voice chat when you enable it.</string>
 		<key>NSLocalNetworkUsageDescription</key>
 		<string>Ely Client connects to DDNet game and voice servers on your local network.</string>
 		<key>NSPhotoLibraryUsageDescription</key>
