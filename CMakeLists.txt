@@ -1001,6 +1001,7 @@ elseif(TARGET_OS STREQUAL "ios")
     src/ios/ios_file_picker.mm
     src/ios/ios_music.mm
     src/ios/ios_performance.mm
+    src/ios/ios_voice_audio.cpp
     src/ios/ios_media.mm
   )
   set(PLATFORM_CLIENT_LIBS

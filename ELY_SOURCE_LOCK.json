@@ -18,5 +18,11 @@
     "ios_performance.h": "871376eeb4fe78a09dc7de6a74b5f72bcd48b950d9598896262052ee17c0b9a1",
     "ios_performance.mm": "0365ee498d7c60d5f6e723601da34d669ca2f83681b49471769e259dfe163f02",
     "ios_music.mm": "864ce9d04a81b1205f63dae395a08fee981499c5dbde5432e3bf706b61894573"
+  },
+  "voice_fix_sha256": "523309fe8389923f49c5547f00769ac0463f8d06ea581795da94262a6f4e6fda",
+  "voice_overlays": {
+    "ios_voice_ring.h": "dd8e0078cf5e170652b632ac1351dc1dc7fe70bc8eb145b6d2636de527f06042",
+    "ios_voice_audio.cpp": "a2f9559effa4bdc16608d7333fe989dccf93b95ecfa46358a9abe4b6cf55849f",
+    "ios_voice_audio.h": "be37488e80bc3b29b3e9c8afd6df8092d3190f7e23db6aa679fbede844851442"
   }
 }

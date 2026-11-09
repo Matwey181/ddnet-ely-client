@@ -41,6 +41,27 @@
 #include <limits>
 #include <unordered_set>
 
+#if defined(CONF_PLATFORM_IOS)
+#include <ios/ios_voice_audio.h>
+#include <ios/ios_performance.h>
+#include <base/time.h>
+class CIosVoiceStage
+{
+ int m_Stage; int64_t m_Start;
+public:
+ explicit CIosVoiceStage(int Stage) : m_Stage(Stage), m_Start(time_get_nanoseconds().count()) {}
+ ~CIosVoiceStage() { IosPerfPhase(m_Stage, time_get_nanoseconds().count() - m_Start); }
+};
+// iOS queued-audio functions take the device mutex. Use a callback-fed SPSC
+// bridge so a slow audio callback cannot stall every game frame.
+#define SDL_OpenAudioDevice IosVoiceOpenAudio
+#define SDL_CloseAudioDevice IosVoiceCloseAudio
+#define SDL_GetQueuedAudioSize IosVoiceQueuedAudio
+#define SDL_ClearQueuedAudio IosVoiceClearAudio
+#define SDL_DequeueAudio IosVoiceDequeueAudio
+#define SDL_QueueAudio IosVoiceQueueAudio
+#endif
+
 namespace
 {
 	constexpr int CAPTURE_READ_SAMPLES = 4096;
@@ -2159,6 +2180,9 @@ void CVoiceChat::CloseServerListPingSocket()
 
 bool CVoiceChat::OpenAudioDevices()
 {
+#if defined(CONF_PLATFORM_IOS)
+ CIosVoiceStage Stage(7);
+#endif
 	if(SDL_WasInit(SDL_INIT_AUDIO) == 0)
 	{
 #ifndef SDL_HINT_AUDIO_INCLUDE_MONITORS
@@ -2244,6 +2268,9 @@ bool CVoiceChat::OpenAudioDevices()
 
 void CVoiceChat::CloseAudioDevices()
 {
+#if defined(CONF_PLATFORM_IOS)
+ CIosVoiceStage Stage(7);
+#endif
 	if(m_CaptureDevice != 0)
 	{
 		SDL_CloseAudioDevice(m_CaptureDevice);
@@ -2749,6 +2776,9 @@ void CVoiceChat::ProcessVoiceRelayPacket(const uint8_t *pRawData, int DataSize, 
 
 void CVoiceChat::ProcessNetwork()
 {
+#if defined(CONF_PLATFORM_IOS)
+ CIosVoiceStage Stage(4);
+#endif
 	for(int PacketCount = 0; PacketCount < MAX_RECEIVE_PACKETS_PER_TICK; ++PacketCount)
 	{
 		NETADDR From = NETADDR_ZEROED;
@@ -3176,6 +3206,9 @@ void CVoiceChat::ProcessServerListPing()
 
 void CVoiceChat::ProcessCapture()
 {
+#if defined(CONF_PLATFORM_IOS)
+ CIosVoiceStage Stage(5);
+#endif
 	if(!m_CaptureDevice || !m_pEncoder)
 		return;
 	if(IsInGameOnlyBlocked())
@@ -3412,6 +3445,9 @@ void CVoiceChat::ProcessCapture()
 
 void CVoiceChat::ProcessPlayback()
 {
+#if defined(CONF_PLATFORM_IOS)
+ CIosVoiceStage Stage(6);
+#endif
 	if(!m_PlaybackDevice)
 		return;
 	if(IsInGameOnlyBlocked())
@@ -3443,7 +3479,12 @@ void CVoiceChat::ProcessPlayback()
 
 	const float MasterVolume = g_Config.m_BcVoiceChatHeadphonesMuted ? 0.0f : (g_Config.m_BcVoiceChatVolume / 100.0f);
 
+#if defined(CONF_PLATFORM_IOS)
+ // Audio may be consumed while this loop runs. Bound work even after a flush.
+ for(int Frame = 0; Frame < 3 && SDL_GetQueuedAudioSize(m_PlaybackDevice) < TargetBytes; ++Frame)
+#else
 	while(SDL_GetQueuedAudioSize(m_PlaybackDevice) < TargetBytes)
+#endif
 	{
 		int16_t aOut[BestClientVoice::FRAME_SIZE * 2];
 		mem_zero(aOut, sizeof(aOut));

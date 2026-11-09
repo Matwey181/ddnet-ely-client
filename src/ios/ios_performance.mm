@@ -16,7 +16,7 @@ struct SSample
 {
 	Clock::time_point m_Start = Clock::now();
 	Clock::time_point m_Last = m_Start;
-	std::array<int64_t, 4> m_Phases{};
+	std::array<int64_t, 8> m_Phases{};
 	std::array<int64_t, 2> m_Worst{};
 	std::array<std::string, 2> m_Names;
 	int m_Frames = 0;
@@ -64,11 +64,11 @@ void IosPerfFrame(float FrameSeconds)
 			if(!Started)
 				fputs("Ely iOS performance v2. No player names, chat or account data. Heat: 0=nominal 1=fair 2=serious 3=critical. Timings are ms/frame; component timings are worst single calls.\n", pFile);
 			Started = true;
-			fprintf(pFile, "t=%.1f fps=%.1f update=%.2f render=%.2f swap=%.2f events=%.2f ram_mb=%.1f available_mb=%.1f heat=%ld worst_update=%s:%.2f worst_render=%s:%.2f\n", Age,
+			fprintf(pFile, "t=%.1f fps=%.1f update=%.2f render=%.2f swap=%.2f events=%.2f ram_mb=%.1f available_mb=%.1f heat=%ld worst_update=%s:%.2f worst_render=%s:%.2f voice_net=%.2f voice_capture=%.2f voice_playback=%.2f voice_devices=%.2f\n", Age,
 				S.m_Frames / Elapsed, S.m_Phases[0] / 1e6 / S.m_Frames, S.m_Phases[1] / 1e6 / S.m_Frames,
 				S.m_Phases[2] / 1e6 / S.m_Frames, S.m_Phases[3] / 1e6 / S.m_Frames,
 				HaveMemory ? Memory.phys_footprint / 1048576.0 : -1.0, os_proc_available_memory() / 1048576.0,
-				static_cast<long>(Thermal), S.m_Names[0].c_str(), S.m_Worst[0] / 1e6, S.m_Names[1].c_str(), S.m_Worst[1] / 1e6);
+				static_cast<long>(Thermal), S.m_Names[0].c_str(), S.m_Worst[0] / 1e6, S.m_Names[1].c_str(), S.m_Worst[1] / 1e6, S.m_Phases[4] / 1e6 / S.m_Frames, S.m_Phases[5] / 1e6 / S.m_Frames, S.m_Phases[6] / 1e6 / S.m_Frames, S.m_Phases[7] / 1e6 / S.m_Frames);
 			fclose(pFile);
 		}
 	}
