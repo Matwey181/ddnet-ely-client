@@ -38,16 +38,11 @@ void IosDisplayCutoutInsets(SDL_Window *pWindow, int *pLeft, int *pRight)
 	const UIEdgeInsets Insets = pView.safeAreaInsets;
 	const CGFloat Scale = pView.contentScaleFactor;
 
-	// The same inset is reported for both sides so that content stays centered, but
-	// only the side that the cutout is on actually hides content.
-	if(pUiWindow.windowScene.interfaceOrientation == UIInterfaceOrientationLandscapeRight)
-	{
-		*pLeft = std::ceil(Insets.left * Scale);
-	}
-	else
-	{
-		*pRight = std::ceil(Insets.right * Scale);
-	}
+	// UIKit supplies orientation-correct safe insets. Reserve both sides so the
+	// UI never lands under the cutout after rotation, regardless of orientation.
+	*pLeft = std::ceil(Insets.left * Scale);
+	*pRight = std::ceil(Insets.right * Scale);
+
 }
 
 const char *InitIos()

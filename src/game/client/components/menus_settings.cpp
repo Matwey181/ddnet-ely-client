@@ -1020,7 +1020,15 @@ void CMenus::RenderSettings(CUIRect MainView)
 		RenderSettingsElyMusicEffects(Animated);
 	else
 	{
+#if defined(CONF_PLATFORM_IOS)
+		// Legacy settings cards draw borders and shadows outside their content box.
+		CUIRect ContentClip = MainView;
+		ContentClip.x -= 12.0f;
+		ContentClip.w += 24.0f;
+		Ui()->ClipEnable(&ContentClip);
+#else
 		Ui()->ClipEnable(&MainView);
+#endif
 		RenderSettingsPage(Animated);
 		Ui()->ClipDisable();
 	}
