@@ -22,8 +22,8 @@ if 'arm64' not in subprocess.check_output(['lipo', '-archs', str(executable)], t
     raise SystemExit('App executable is not arm64')
 if info.get('CFBundleSupportedPlatforms') != ['iPhoneOS']:
     raise SystemExit('App is not built for iPhoneOS')
-if not info.get('NSMicrophoneUsageDescription'):
-    raise SystemExit('Missing microphone permission description')
+if info.get('NSMicrophoneUsageDescription'):
+    raise SystemExit('Voice-free build must not request microphone permission')
 output.parent.mkdir(parents=True, exist_ok=True)
 with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
     for path in sorted(app.rglob('*')):
