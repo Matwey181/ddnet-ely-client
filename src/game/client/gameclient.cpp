@@ -2,6 +2,7 @@
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
 
 #include "gameclient.h"
+#include "mobile_runtime.h"
 
 #include "components/background.h"
 #include "components/bestclient/inputs.h" // bestclient
@@ -401,6 +402,13 @@ void CGameClient::ForceUpdateConsoleRemoteCompletionSuggestions()
 
 void CGameClient::OnInit()
 {
+#if defined(CONF_PLATFORM_IOS)
+	if(g_Config.m_ClIosRuntimeProfile < 1)
+	{
+		ElyMobile::ApplyFrameProfile(g_Config.m_GfxRefreshRate, g_Config.m_ClRefreshRate, g_Config.m_ClRefreshRateInactive);
+		g_Config.m_ClIosRuntimeProfile = 1;
+	}
+#endif
 	const int64_t OnInitStart = time_get();
 
 	Client()->SetLoadingCallback([this](IClient::ELoadingCallbackDetail Detail) {
@@ -583,16 +591,9 @@ void CGameClient::OnUpdate()
 
 	// handle touch events
 	std::vector<IInput::CTouchFingerState> vTouchFingerStates = Input()->TouchFingerStates();
-	if(!vTouchFingerStates.empty())
-	{
-		for(auto &pComponent : m_vpInput)
-		{
-			if(pComponent->OnTouchState(vTouchFingerStates))
-			{
-				Input()->ClearTouchDeltas();
-			}
-		}
-	}
+	ElyMobile::DispatchTouchState(m_vpInput, vTouchFingerStates, [this]() {
+		Input()->ClearTouchDeltas();
+	});
 
 	// handle key presses
 	Input()->ConsumeEvents([&](const IInput::CEvent &Event) {

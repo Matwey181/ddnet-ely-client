@@ -32,6 +32,7 @@ MACRO_CONFIG_INT(ClTouchControls, cl_touch_controls, 1, 0, 1, CFGFLAG_CLIENT | C
 MACRO_CONFIG_INT(ClTouchControls, cl_touch_controls, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable ingame touch controls")
 #endif
 #if defined(CONF_PLATFORM_IOS)
+MACRO_CONFIG_INT(ClIosRuntimeProfile, cl_ios_runtime_profile, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Applied iOS frame-rate profile version")
 // iOS has neither a back button nor a keyboard to press the escape-key with.
 MACRO_CONFIG_INT(ClBackButton, cl_back_button, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show draggable virtual back button")
 #else
