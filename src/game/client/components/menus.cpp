@@ -882,45 +882,8 @@ void CMenus::RenderLoadingDirect(const char *pCaption, const char *pContent, std
 
 	Ui()->MapScreen();
 
-	if(GameClient()->m_MenuBackground.IsLoading())
-	{
-		// Avoid rendering while loading the menu background as this would otherwise
-		// cause the regular menu background to be rendered for a few frames while
-		// the menu background is not loaded yet.
-		return;
-	}
-	if(!GameClient()->m_MenuBackground.Render())
-	{
-		RenderBackground();
-	}
-
 	m_LoadingState.m_LastRender = Now;
-
-	CUIRect Box;
-	Ui()->Screen()->Margin(160.0f, &Box);
-
-	Graphics()->TextureClear();
-	Box.Draw(ColorRGBA(0.0f, 0.0f, 0.0f, 0.5f), IGraphics::CORNER_ALL, 15.0f);
-	Box.Margin(20.0f, &Box);
-
-	CUIRect Label;
-	Box.HSplitTop(24.0f, &Label, &Box);
-	Ui()->DoLabel(&Label, pCaption, 24.0f, TEXTALIGN_MC);
-
-	Box.HSplitTop(20.0f, nullptr, &Box);
-	Box.HSplitTop(24.0f, &Label, &Box);
-	Ui()->DoLabel(&Label, pContent, 20.0f, TEXTALIGN_MC);
-
-	if(Progress.has_value())
-	{
-		CUIRect ProgressBar;
-		Box.HSplitBottom(30.0f, &Box, nullptr);
-		Box.HSplitBottom(25.0f, &Box, &ProgressBar);
-		ProgressBar.VMargin(20.0f, &ProgressBar);
-		Ui()->RenderProgressBar(ProgressBar, std::clamp(Progress.value(), 0.0f, 1.0f));
-	}
-
-	Graphics()->SetColor(1.0, 1.0, 1.0, 1.0);
+	m_MenusStart.RenderElyLoading(*Ui()->Screen(),pCaption,pContent,Progress.value_or(0.f));
 
 	Client()->UpdateAndSwap();
 }

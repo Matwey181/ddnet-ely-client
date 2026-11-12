@@ -1838,6 +1838,17 @@ set(EXPECTED_DATA
   editor/tele.png
   editor/tune.png
   ely/logo.png
+  ely/home-background.png
+  ely/home-brand.png
+  ely/home-card.png
+  ely/home-mascot.png
+  ely/home-nav.png
+  ely/home-play.png
+  ely/home-quick.png
+  ely/loading-reference.png
+  ely/supplied-loading-card.png
+  ely/supplied-mascot.png
+  ely/wink.opus
   ely/mascot-background.png
   ely/third_party/soundvisualizer/LICENSE
   ely/third_party/soundvisualizer/README.txt
@@ -2317,7 +2328,7 @@ set(EXPECTED_DATA
   # tidy-alphabetical-end
 )
 
-set_glob(DATA GLOB_RECURSE "cfg;chai;frag;json;map;otf;png;rules;ttc;ttf;txt;vert;wv" data ${EXPECTED_DATA})
+set_glob(DATA GLOB_RECURSE "cfg;chai;frag;json;map;opus;otf;png;rules;ttc;ttf;txt;vert;wv" data ${EXPECTED_DATA})
 
 ########################################################################
 # COPY DATA AND SHARED LIBS

@@ -18,11 +18,16 @@ class CMenusStart : public CComponentInterfaces
 {
 public:
 	void RenderStartMenu(CUIRect MainView);
+	void RenderElyLoading(CUIRect View, const char *pCaption, const char *pContent, float Progress);
 	void RenderElyBackground(CUIRect View, bool Settings);
 	void UnloadElyAssets();
 	void ClearElyLabels();
 
 private:
+	void DrawElyLoadingCard(CUIRect View, const char *pCaption, const char *pContent, float Progress, float Alpha);
+	bool m_ElySawLoading = false, m_ElyWinkPlayed = false, m_ElyDrawingLoading = false;
+	int64_t m_ElyStartupTick = 0;
+	int m_ElyWinkSound = -1;
 	enum EElyLabel
 	{
 		LABEL_BRAND,
@@ -34,7 +39,7 @@ private:
 		LABEL_PLAY,
 		LABEL_DDNET,
 		LABEL_LAST_SERVER,
-		NUM_LABELS,
+		NUM_LABELS = 64,
 	};
 	struct SElyLabel
 	{
@@ -49,6 +54,9 @@ private:
 	std::array<SElyLabel, NUM_LABELS> m_aElyLabels;
 	IGraphics::CTextureHandle m_ElyLogoTexture;
 	IGraphics::CTextureHandle m_ElyBackgroundTexture;
+	IGraphics::CTextureHandle m_ElyHomeBackgroundTexture, m_ElyHomeMascotTexture;
+	IGraphics::CTextureHandle m_ElyPlayTexture, m_ElyQuickTexture, m_ElyCardTexture, m_ElyNavTexture, m_ElyBrandTexture;
+	IGraphics::CTextureHandle m_ElyLoadingReferenceTexture;
 	float m_ElyBackgroundAspect = 1.0f;
 	bool m_ElyAssetsLoaded = false;
 	bool m_ElyOpening = false;
