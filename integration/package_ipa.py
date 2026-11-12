@@ -24,6 +24,9 @@ if info.get('CFBundleSupportedPlatforms') != ['iPhoneOS']:
     raise SystemExit('App is not built for iPhoneOS')
 if info.get('NSMicrophoneUsageDescription'):
     raise SystemExit('Voice-free build must not request microphone permission')
+for name in ['home-background.png', 'home-mascot.png', 'home-play.png', 'home-quick.png', 'home-card.png', 'home-nav.png', 'supplied-loading-card.png', 'supplied-mascot.png']:
+    if not (app / 'data/ely' / name).is_file():
+        raise SystemExit('Missing new home resource: ' + name)
 output.parent.mkdir(parents=True, exist_ok=True)
 with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
     for path in sorted(app.rglob('*')):

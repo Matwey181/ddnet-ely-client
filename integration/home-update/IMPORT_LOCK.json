@@ -1,0 +1,31 @@
+{
+  "input_zip_sha256": "87f8e98041e47513a6323d925fa3672940c43fc117beabcbf0c49096760640f5",
+  "base_source_commit": "2ba39c78cb34b96c95d694a406c6c66480e023d1",
+  "patch_sha256": "d91b8089d64efd8214a085fcd2ee8f4d1e9144c8b715194db5a279b0edb15041",
+  "files": [
+    "CMakeLists.txt",
+    "data/ely/home-background.png",
+    "data/ely/home-brand.png",
+    "data/ely/home-card.png",
+    "data/ely/home-mascot.png",
+    "data/ely/home-nav.png",
+    "data/ely/home-play.png",
+    "data/ely/home-quick.png",
+    "data/ely/loading-reference.png",
+    "data/ely/supplied-loading-card.png",
+    "data/ely/supplied-mascot.png",
+    "data/ely/wink.opus",
+    "src/game/client/components/ely_backdrop_vector.h",
+    "src/game/client/components/ely_mascot_art.h",
+    "src/game/client/components/ely_vector_mascot.h",
+    "src/game/client/components/menus.cpp",
+    "src/game/client/components/menus_start.cpp",
+    "src/game/client/components/menus_start.h"
+  ],
+  "base_file_sha256": {
+    "CMakeLists.txt": "ccb01f604d6624223be7e4c3abeb90360637732314af2c2f4991fc841bf7cb50",
+    "src/game/client/components/menus.cpp": "76a754582707d47ab2074200f82b1524e386bcee0033cb52d7f1652b9a26de64",
+    "src/game/client/components/menus_start.cpp": "3e2640b7f1d9b46583a2fff652417639df2ec87dcd5de017fc95d6a0d860ae24",
+    "src/game/client/components/menus_start.h": "ec3199e12b0b74c523cfde909193d4024fcf7a307df52c43d51975a2cca1a6c8"
+  }
+}
