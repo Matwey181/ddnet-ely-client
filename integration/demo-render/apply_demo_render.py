@@ -23,6 +23,34 @@ replace("src/engine/client/video.cpp",
         "#if defined(CONF_VIDEORECORDER)\n",
         "#include <base/detect.h>\n#if defined(CONF_VIDEORECORDER) && !defined(CONF_PLATFORM_IOS)\n")
 
+# FFmpeg is not linked on iOS; retain the existing native media decoders.
+for media_path in ("src/game/client/components/bestclient/media_decoder.cpp",
+                   "src/game/client/components/bestclient/menu_media_background.cpp"):
+    media = root / media_path
+    data = media.read_text()
+    data = data.replace("#if defined(CONF_VIDEORECORDER)\n",
+                        "#if defined(CONF_VIDEORECORDER) && !defined(CONF_PLATFORM_IOS)\n")
+    if media_path.endswith("media_decoder.cpp"):
+        data = data.replace("#if !defined(CONF_VIDEORECORDER)\n",
+                            "#if !defined(CONF_VIDEORECORDER) || defined(CONF_PLATFORM_IOS)\n")
+    media.write_text(data)
+
+# Also hide overlays for existing installations with a saved settings.cfg.
+replace("src/engine/client/client.cpp",
+        "\tStartVideo(pVideoName, false);\n",
+        """#if defined(CONF_PLATFORM_IOS)
+    g_Config.m_ClNamePlates = 0;
+    g_Config.m_ClSpecCursor = 0;
+    g_Config.m_ClShowhud = 0;
+    g_Config.m_ClShowChat = 0;
+    g_Config.m_ClShowKillMessages = 0;
+    g_Config.m_ClShowFinishMessages = 0;
+    g_Config.m_ClVideoShowChat = 0;
+    g_Config.m_ClVideoShowImportantAlerts = 0;
+#endif
+\tStartVideo(pVideoName, false);
+""")
+
 p = root / "src/engine/client/video.h"
 data = p.read_text()
 data = data.replace("#define ENGINE_CLIENT_VIDEO_H\n",
