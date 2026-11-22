@@ -36,6 +36,7 @@ private:
     int m_Height;
     int m_Fps;
     int m_PreviousBackButton = 1;
+    int m_PreviousTouchControls = 1;
     int64_t m_Time;
     int64_t m_TickTime;
     int64_t m_LocalStartTime;

@@ -4376,6 +4376,7 @@ const char *CClient::DemoPlayer_Render(const char *pFilename, int StorageType, c
     g_Config.m_ClShowFinishMessages = 0;
     g_Config.m_ClVideoShowChat = 0;
     g_Config.m_ClVideoShowImportantAlerts = 0;
+    g_Config.m_ClShowEmotes = 0;
 #endif
 	StartVideo(pVideoName, false);
 	m_DemoPlayer.SetSpeedIndex(SpeedIndex);

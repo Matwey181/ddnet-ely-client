@@ -95,7 +95,9 @@ bool CVideo::Start()
         }
         [m_pImpl->m_pWriter startSessionAtSourceTime:kCMTimeZero];
         m_PreviousBackButton = g_Config.m_ClBackButton;
+        m_PreviousTouchControls = g_Config.m_ClTouchControls;
         g_Config.m_ClBackButton = 0;
+        g_Config.m_ClTouchControls = 0;
         m_Recording.store(true);
         log_info("ios-video", "Rendering %dx%d at %d FPS", m_Width, m_Height, m_Fps);
         return true;
@@ -215,6 +217,7 @@ void CVideo::Stop()
         m_Recording.store(false);
     }
     g_Config.m_ClBackButton = m_PreviousBackButton;
+    g_Config.m_ClTouchControls = m_PreviousTouchControls;
     @autoreleasepool
     {
         if(m_pImpl->m_pWriter && m_pImpl->m_pWriter.status == AVAssetWriterStatusWriting)
