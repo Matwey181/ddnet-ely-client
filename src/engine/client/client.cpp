@@ -4367,6 +4367,16 @@ const char *CClient::DemoPlayer_Render(const char *pFilename, int StorageType, c
 	if(pError)
 		return pError;
 
+#if defined(CONF_PLATFORM_IOS)
+    g_Config.m_ClNamePlates = 0;
+    g_Config.m_ClSpecCursor = 0;
+    g_Config.m_ClShowhud = 0;
+    g_Config.m_ClShowChat = 0;
+    g_Config.m_ClShowKillMessages = 0;
+    g_Config.m_ClShowFinishMessages = 0;
+    g_Config.m_ClVideoShowChat = 0;
+    g_Config.m_ClVideoShowImportantAlerts = 0;
+#endif
 	StartVideo(pVideoName, false);
 	m_DemoPlayer.SetSpeedIndex(SpeedIndex);
 	if(StartPaused)

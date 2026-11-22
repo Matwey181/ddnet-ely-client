@@ -19,7 +19,7 @@
 #include <algorithm>
 #include <limits>
 
-#if defined(CONF_VIDEORECORDER)
+#if defined(CONF_VIDEORECORDER) && !defined(CONF_PLATFORM_IOS)
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -33,7 +33,7 @@ namespace
 	constexpr int MENU_MEDIA_DEFAULT_VIDEO_FRAME_MS = 33;
 	constexpr int64_t MENU_MEDIA_PTS_UNSET = std::numeric_limits<int64_t>::min();
 
-#if defined(CONF_VIDEORECORDER)
+#if defined(CONF_VIDEORECORDER) && !defined(CONF_PLATFORM_IOS)
 	bool DecodeFirstFrameFromFile(const char *pAbsolutePath, CImageInfo &ImageOut)
 	{
 		ImageOut.Free();
@@ -246,7 +246,7 @@ void CMenuMediaBackground::ClearVideoState()
 	IosVideoClose(m_pIosVideo);
 	m_pIosVideo = nullptr;
 #endif
-#if defined(CONF_VIDEORECORDER)
+#if defined(CONF_VIDEORECORDER) && !defined(CONF_PLATFORM_IOS)
 	m_StopRequested.store(true, std::memory_order_relaxed);
 	if(m_DecoderThread.joinable())
 		m_DecoderThread.join();

@@ -18,7 +18,7 @@
 #include <cctype>
 #include <limits>
 
-#if defined(CONF_VIDEORECORDER)
+#if defined(CONF_VIDEORECORDER) && !defined(CONF_PLATFORM_IOS)
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -41,7 +41,7 @@ namespace
 		return pData != nullptr && DataSize >= 8 && mem_comp(pData, s_aPngSig, 8) == 0;
 	}
 
-#if defined(CONF_VIDEORECORDER)
+#if defined(CONF_VIDEORECORDER) && !defined(CONF_PLATFORM_IOS)
 	struct CFfmpegMemoryReader
 	{
 		const unsigned char *m_pData = nullptr;
@@ -256,7 +256,7 @@ namespace MediaDecoder
 		if(!pData || DataSize == 0)
 			return false;
 
-#if !defined(CONF_VIDEORECORDER)
+#if !defined(CONF_VIDEORECORDER) || defined(CONF_PLATFORM_IOS)
 		return false;
 #else
 		CFfmpegMemoryReader Reader{pData, DataSize, 0};
@@ -421,7 +421,7 @@ namespace MediaDecoder
 #endif
 	}
 
-#if defined(CONF_VIDEORECORDER)
+#if defined(CONF_VIDEORECORDER) && !defined(CONF_PLATFORM_IOS)
 	bool DecodeImageWithFfmpegCpu(IGraphics *pGraphics, const unsigned char *pData, size_t DataSize, const char *pContextName, SMediaDecodedFrames &DecodedFrames, const SMediaDecodeLimits &Limits)
 	{
 		DecodedFrames.Free();
