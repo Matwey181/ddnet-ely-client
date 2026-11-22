@@ -115,4 +115,20 @@ replace(storage,
 \t\t\tlog_error("storage", "failed to create default folders in the user directory");
 \t\t}
 ''')
+# Hide on-screen mobile buttons only while exporting; restore controls afterward.
+replace("src/engine/client/ios_video_recorder.h",
+        "    int m_PreviousBackButton = 1;\n",
+        "    int m_PreviousBackButton = 1;\n    int m_PreviousTouchControls = 1;\n")
+replace(video,
+        "m_PreviousBackButton = g_Config.m_ClBackButton;\n        g_Config.m_ClBackButton = 0;",
+        "m_PreviousBackButton = g_Config.m_ClBackButton;\n        m_PreviousTouchControls = g_Config.m_ClTouchControls;\n        g_Config.m_ClBackButton = 0;\n        g_Config.m_ClTouchControls = 0;")
+replace(video,
+        "g_Config.m_ClBackButton = m_PreviousBackButton;\n",
+        "g_Config.m_ClBackButton = m_PreviousBackButton;\n    g_Config.m_ClTouchControls = m_PreviousTouchControls;\n")
+
+# Emotes (hearts etc.) also stay out of demo export.
+replace("src/engine/client/client.cpp",
+        "    g_Config.m_ClVideoShowImportantAlerts = 0;\n#endif\n",
+        "    g_Config.m_ClVideoShowImportantAlerts = 0;\n    g_Config.m_ClShowEmotes = 0;\n#endif\n")
+
 print("iOS 2560x1440 output and preinstalled demo hook configured")
