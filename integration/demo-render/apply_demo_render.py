@@ -21,12 +21,12 @@ replace("CMakeLists.txt",
         '  if(VIDEORECORDER OR TARGET_OS STREQUAL "ios")\n    target_compile_definitions')
 replace("src/engine/client/video.cpp",
         "#if defined(CONF_VIDEORECORDER)\n",
-        "#if defined(CONF_VIDEORECORDER) && !defined(CONF_PLATFORM_IOS)\n")
+        "#include <base/detect.h>\n#if defined(CONF_VIDEORECORDER) && !defined(CONF_PLATFORM_IOS)\n")
 
 p = root / "src/engine/client/video.h"
 data = p.read_text()
 data = data.replace("#define ENGINE_CLIENT_VIDEO_H\n",
-                    '#define ENGINE_CLIENT_VIDEO_H\n#if defined(CONF_PLATFORM_IOS)\n#include "ios_video_recorder.h"\n#else\n', 1)
+                    '#define ENGINE_CLIENT_VIDEO_H\n#include <base/detect.h>\n#if defined(CONF_PLATFORM_IOS)\n#include "ios_video_recorder.h"\n#else\n', 1)
 assert data.rstrip().endswith("#endif")
 idx = data.rfind("#endif")
 p.write_text(data[:idx] + "#endif // iOS\n" + data[idx:])
