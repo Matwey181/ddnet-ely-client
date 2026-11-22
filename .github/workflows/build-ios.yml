@@ -2,7 +2,7 @@ name: Ely iOS IPA
 
 on:
   push:
-    branches: [ios-demo-render-20261122]
+    branches: [ios-demo-render-2k-20261122]
     paths: ['integration/**', '.github/workflows/build-ios.yml']
   workflow_dispatch:
 
@@ -46,6 +46,7 @@ jobs:
           python3 control/integration/edge-fix/fix_edges.py source
           python3 control/integration/home-update/apply_home.py source
           python3 control/integration/demo-render/apply_demo_render.py source
+          python3 control/integration/demo-render/apply_2k.py source
       - name: Test touch release and mobile frame profile
         run: |
           clang++ -std=c++20 -Wall -Wextra -Werror -Isource/src \
