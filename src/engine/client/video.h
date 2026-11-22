@@ -1,5 +1,6 @@
 #ifndef ENGINE_CLIENT_VIDEO_H
 #define ENGINE_CLIENT_VIDEO_H
+#include <base/detect.h>
 #if defined(CONF_PLATFORM_IOS)
 #include "ios_video_recorder.h"
 #else

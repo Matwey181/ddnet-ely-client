@@ -1,3 +1,4 @@
+#include <base/detect.h>
 #if defined(CONF_VIDEORECORDER) && !defined(CONF_PLATFORM_IOS)
 
 #include "video.h"
