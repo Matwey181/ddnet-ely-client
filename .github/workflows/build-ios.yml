@@ -94,7 +94,7 @@ jobs:
             -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
             -miphoneos-version-min=15.0 -std=c++20 -fobjc-arc \
             -fsyntax-only -Isource/src -Isource/src/engine/external \
-            source/src/ios/ios_music.mm source/src/ios/ios_media.mm source/src/ios/ios_performance.mm
+            source/src/ios/ios_music.mm source/src/ios/ios_media.mm source/src/ios/ios_performance.mm source/src/ios/ios_video_recorder.mm
       - name: Configure iPhone arm64 build
         working-directory: source
         run: |
