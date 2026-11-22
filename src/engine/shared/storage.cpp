@@ -117,6 +117,46 @@ public:
 		for(const char *pDir : COMMON_DIRS)
 			Success &= CreateFolder(pDir, TYPE_SAVE);
 
+#if defined(CONF_PLATFORM_IOS)
+        if(InitializationType == EInitializationType::CLIENT && Success)
+        {
+            constexpr const char *pBundled = "data/demos/bundled_232.demo";
+            constexpr const char *pDemoFileName = "блокаа232.demo";
+            char aDestination[IO_MAX_PATH_LENGTH];
+            str_format(aDestination, sizeof(aDestination), "%s/demos/%s",
+                       m_aaStoragePaths[TYPE_SAVE], pDemoFileName);
+            IOHANDLE Existing = io_open(aDestination, IOFLAG_READ);
+            if(Existing)
+                io_close(Existing);
+            else if(IOHANDLE Source = io_open(pBundled, IOFLAG_READ))
+            {
+                IOHANDLE Destination = io_open(aDestination, IOFLAG_WRITE);
+                if(Destination)
+                {
+                    bool CopySucceeded = true;
+                    char aChunk[16384];
+                    unsigned BytesRead;
+                    while((BytesRead = io_read(Source, aChunk, sizeof(aChunk))) != 0)
+                    {
+                        if(io_write(Destination, aChunk, BytesRead) != BytesRead)
+                        {
+                            CopySucceeded = false;
+                            break;
+                        }
+                    }
+                    io_close(Destination);
+                    if(CopySucceeded)
+                        log_info("storage", "Installed bundled demo: %s", aDestination);
+                    else
+                        log_error("storage", "Could not finish copying bundled demo");
+                }
+                else
+                    log_error("storage", "Could not create bundled demo");
+                io_close(Source);
+            }
+        }
+#endif
+
 		if(!Success)
 		{
 			log_error("storage", "failed to create default folders in the user directory");

@@ -974,6 +974,7 @@ elseif(TARGET_OS STREQUAL "mac")
   set(PLATFORM_LIBS ${CARBON} ${SECURITY})
 elseif(TARGET_OS STREQUAL "ios")
   # Frameworks required by SDL2, see its CMakeLists.txt.
+  find_library(ACCELERATE Accelerate)
   find_library(AUDIOTOOLBOX AudioToolbox)
   find_library(AVFOUNDATION AVFoundation)
   find_library(COREBLUETOOTH CoreBluetooth)
@@ -1006,6 +1007,7 @@ elseif(TARGET_OS STREQUAL "ios")
   )
   set(PLATFORM_CLIENT_LIBS
     # tidy-alphabetical-start
+    ${ACCELERATE}
     ${AUDIOTOOLBOX}
     ${AVFOUNDATION}
     ${COREBLUETOOTH}

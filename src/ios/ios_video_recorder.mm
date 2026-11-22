@@ -10,6 +10,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <CoreVideo/CoreVideo.h>
 #import <Foundation/Foundation.h>
+#import <Accelerate/Accelerate.h>
 #include <algorithm>
 #include <chrono>
 #include <thread>
@@ -26,7 +27,7 @@ struct CVideo::SImpl
 CVideo::CVideo(IGraphics *pGraphics, ISound *pSound, IStorage *pStorage,
                int Width, int Height, int64_t LocalStartTime, const char *pName) :
     m_pImpl(std::make_unique<SImpl>()), m_pGraphics(pGraphics), m_pSound(pSound),
-    m_pStorage(pStorage), m_Width(Width & ~1), m_Height(Height & ~1),
+    m_pStorage(pStorage), m_Width(2560), m_Height(1440),
     m_Fps(std::clamp(g_Config.m_ClVideoRecorderFPS, 1, 120)),
     m_Time(time_get()), m_TickTime(time_freq() / m_Fps),
     m_LocalStartTime(LocalStartTime),
@@ -128,8 +129,8 @@ void CVideo::NextVideoFrameThread()
         if(!Readback)
             return;
         Readback(Width, Height, Format, Pixels);
-        if(Format != CImageInfo::FORMAT_RGBA || Width < (uint32_t)m_Width ||
-           Height < (uint32_t)m_Height || Pixels.size() < (size_t)Width * Height * 4)
+        if(Format != CImageInfo::FORMAT_RGBA || Width == 0 || Height == 0 ||
+           Pixels.size() < (size_t)Width * Height * 4)
         {
             log_error("ios-video", "Invalid framebuffer");
             return;
@@ -147,6 +148,33 @@ void CVideo::NextVideoFrameThread()
             log_error("ios-video", "Encoder timeout");
             return;
         }
+
+        // Crop symmetrically to 16:9: no stretching or black borders.
+        const uint32_t CropWidth = (uint64_t)Width * 9 > (uint64_t)Height * 16
+            ? (uint32_t)((uint64_t)Height * 16 / 9) : Width;
+        const uint32_t CropHeight = (uint64_t)Width * 9 > (uint64_t)Height * 16
+            ? Height : (uint32_t)((uint64_t)Width * 9 / 16);
+        if(CropWidth == 0 || CropHeight == 0)
+            return;
+        const uint32_t StartX = (Width - CropWidth) / 2;
+        const uint32_t StartY = (Height - CropHeight) / 2;
+        std::vector<uint8_t> Upscaled((size_t)m_Width * m_Height * 4);
+        vImage_Buffer Source = {
+            Pixels.data() + ((size_t)StartY * Width + StartX) * 4,
+            (vImagePixelCount)CropHeight, (vImagePixelCount)CropWidth, (size_t)Width * 4
+        };
+        vImage_Buffer Destination = {
+            Upscaled.data(), (vImagePixelCount)m_Height,
+            (vImagePixelCount)m_Width, (size_t)m_Width * 4
+        };
+        if(vImageScale_ARGB8888(&Source, &Destination, nullptr,
+                               kvImageHighQualityResampling) != kvImageNoError)
+        {
+            log_error("ios-video", "Failed to scale demo to 2560x1440");
+            return;
+        }
+        Pixels.swap(Upscaled);
+        Width = (uint32_t)m_Width;
 
         CVPixelBufferRef Buffer = nullptr;
         CVReturn Status = CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault,
