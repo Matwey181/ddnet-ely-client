@@ -1002,6 +1002,7 @@ elseif(TARGET_OS STREQUAL "ios")
     src/ios/ios_music.mm
     src/ios/ios_performance.mm
     src/ios/ios_media.mm
+    src/ios/ios_video_recorder.mm
   )
   set(PLATFORM_CLIENT_LIBS
     # tidy-alphabetical-start
@@ -3580,7 +3581,7 @@ if(CLIENT)
   target_link_libraries(game-client ${LIBS_CLIENT})
 
   if(TARGET_OS STREQUAL "ios")
-    set_source_files_properties(src/ios/ios_media.mm src/ios/ios_music.mm src/ios/ios_performance.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+    set_source_files_properties(src/ios/ios_media.mm src/ios/ios_music.mm src/ios/ios_performance.mm src/ios/ios_video_recorder.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
     set(IOS_INFO_PLIST "${PROJECT_BINARY_DIR}/ios-Info.plist")
     configure_file("${PROJECT_SOURCE_DIR}/scripts/ios/files/Info.plist.in" "${IOS_INFO_PLIST}")
     target_sources(game-client PRIVATE "${PROJECT_SOURCE_DIR}/scripts/ios/files/Assets.xcassets")
@@ -4891,7 +4892,7 @@ foreach(target ${TARGETS_OWN})
     target_compile_definitions(${target} PRIVATE CONF_UPNP)
     target_include_directories(${target} SYSTEM PRIVATE ${MINIUPNPC_INCLUDE_DIRS})
   endif()
-  if(VIDEORECORDER)
+  if(VIDEORECORDER OR TARGET_OS STREQUAL "ios")
     target_compile_definitions(${target} PRIVATE CONF_VIDEORECORDER)
   endif()
   if(ANTIBOT)

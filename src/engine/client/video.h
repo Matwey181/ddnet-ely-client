@@ -1,5 +1,8 @@
 #ifndef ENGINE_CLIENT_VIDEO_H
 #define ENGINE_CLIENT_VIDEO_H
+#if defined(CONF_PLATFORM_IOS)
+#include "ios_video_recorder.h"
+#else
 
 #include <base/lock.h>
 
@@ -173,4 +176,5 @@ private:
 	const AVOutputFormat *m_pFormat;
 };
 
+#endif // iOS
 #endif
